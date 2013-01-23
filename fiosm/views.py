@@ -22,6 +22,20 @@ def foundroot_view(request):
     request.matchdict["guid"]=""
     return found_view(request)
 
+@view_config(route_name='details', renderer='templates/details.pt')
+def details_view(request):
+    
+    guid=request.matchdict["guid"]
+    #Make check for malformed guid!!!
+    try:
+        guid=uuid.UUID(guid)
+    except ValueError:
+        pass
+    myself=melt.fias_AO(guid)
+    statlink=request.route_url('found', guid=guid, typ='all')
+    return {"fias":myself.fias,"statlink":statlink,"name":myself.name}
+
+
 @view_config(route_name='found', renderer='templates/found.pt')
 def found_view(request):
     def add_links(elem):
@@ -48,6 +62,10 @@ def found_view(request):
         myself.link['top']=request.route_url('found', guid=myself.parent, typ='all')
     else:
         myself.link['top']=''
+
+    myself.link['details']=request.route_url('details', guid=myself.guid, kind='ao')
+   
+       
     agen=myself.subs(typ) #melt.GetAreaList(guid,typ)
     #alist=[makerow(_guid for _guid in agen)]
     alist=[]

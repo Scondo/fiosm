@@ -7,7 +7,6 @@
   <meta name="description" content="pyramid web application" />
   <link rel="icon" type="image/png" href="${request.static_url('fiosm:static/favicon.png')}" />
   <style>
-  .mystat{width: 30%}
   .childstat{width:90%}
   </style>
 </head>
@@ -15,8 +14,9 @@
 	<table class="header" border="0">
 	<tr><td>${myself.name}</td><td>Выше:<a href="${myself.link['top']}">${myself.parent.name}</a></td>
 	</tr>
+	<tr><td><a href="${myself.link['details']}">Информация ФИАС</a></td></tr>
 	<tr><td width=50%>
-	<table class="mystat" cellspacing="1" border="1" width="100%">
+	<table class="mystat" cellspacing="1" border="1">
 <tr><th colspan="2">Статистика:</th></tr>
 					<tr>
 						<td>Всего адресных элементов</td>
