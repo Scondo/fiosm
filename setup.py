@@ -7,7 +7,8 @@ README = open(os.path.join(here, 'README.txt')).read()
 CHANGES = open(os.path.join(here, 'CHANGES.txt')).read()
 
 requires = [
- 'psycopg2' , 'ppygis' ,  'pyramid',
+    'psycopg2' , 'ppygis' ,  'argparse'
+    'pyramid', 
     'pyramid_debugtoolbar',
     'waitress',
     ]
