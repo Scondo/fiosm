@@ -7,6 +7,16 @@ import logging
 logging.basicConfig(filename='fiosm.log',level=logging.WARNING)
 cur=melt.conn.cursor()
 
+def StatTableReCreate():
+    cur.execute("DROP TABLE IF EXISTS fiosm_stat")
+    cur.execute("""CREATE TABLE fiosm_stat(ao_all    integer,
+   found     integer,
+   street    integer,
+   all_b     integer,
+   found_b   integer,
+   aoguid    uuid
+);""")
+
 def AssocTableReCreate():
     cur.execute("DROP TABLE IF EXISTS "+prefix+pl_aso_tbl)
     cur.execute("CREATE TABLE "+prefix+pl_aso_tbl+"(aoguid UUID,  osm_admin integer);")
@@ -296,6 +306,7 @@ if __name__=="__main__":
     AssocTableReCreate()
     AssocBTableReCreate()
 #    AssocTriggersReCreate()
+    StatTableReCreate()
     mangledb.InitMangle(False)
     try:
         AssORoot()
