@@ -30,7 +30,7 @@ def details_view(request):
     try:
         guid=uuid.UUID(guid)
     except ValueError:
-        pass
+        raise HTTPBadRequest()
     myself=melt.fias_AO(guid)
     statlink=request.route_url('found', guid=guid, typ='all')
     return {"fias":myself.fias,"statlink":statlink,"name":myself.name}
@@ -59,7 +59,7 @@ def found_view(request):
         pass
     add_links(myself)
     if myself.parent.guid:
-        myself.link['top']=request.route_url('found', guid=myself.parent, typ='all')
+        myself.link['top']=request.route_url('found', guid=myself.parent.guid, typ='all')
     else:
         myself.link['top']=''
 

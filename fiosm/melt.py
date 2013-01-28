@@ -68,7 +68,7 @@ class fias_AO(object):
         if guid=="":
             guid=None
         self.guid=guid
-        self.kind=kind
+        self.setkind(kind)
         if osmid:
             self._osmid=osmid
         if parent:
@@ -103,12 +103,12 @@ class fias_AO(object):
         return self._kind
     
     def setkind(self,kind):
-        if type(kind) is str:
-            if kind=='found':
+        if not type(kind) is int:
+            if str(kind)=='found':
                 self._kind=2
-            elif kind=='street':
+            elif str(kind)=='street':
                 self._kind=1
-            elif kind=='not found':
+            elif str(kind)=='not found':
                 self._kind=0
             else:
                 self._kind=None
@@ -170,7 +170,7 @@ class fias_AO(object):
     @property
     def fullname(self):
         cur_=conn.cursor()
-        cur_.execute("""SELECT s.socrname FROM fias_addr_obj a, fias_socr_obj s
+        cur_.execute("""SELECT lower(s.socrname) FROM fias_addr_obj a, fias_socr_obj s
         WHERE a.shortname = s.scname AND a.aolevel=s.level AND aoguid=%s """,(self.guid,))
         res=cur_.fetchone()
         if res:
@@ -191,11 +191,11 @@ class fias_AO(object):
  
     @property
     def parent(self):
-        if not hasattr(self,'_parent'):
-            self.getFiasData()
-        if self._parent==None:
-            return self
         if not hasattr(self,'_parentO'):
+            if not hasattr(self,'_parent'):
+                self.getFiasData()
+            if self._parent==None:
+                return self
             self._parentO=fias_AO(self._parent)
         return self._parentO
     
@@ -291,8 +291,7 @@ class fias_AO(object):
             name=cur_.fetchone()
             if name:
                 self._name=name[0]
-                return name[0]
-            
+                return name[0]   
         self._name=self.names().next()
         return self._name
 
