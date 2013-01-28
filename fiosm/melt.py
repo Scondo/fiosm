@@ -16,8 +16,9 @@ import mangledb
 from config import *
 conn=psycopg2.connect(connstr)
 conn.autocommit=True
-stat_conn=psycopg2.connect(connstr,async=True)
-psycopg2.extras.wait_select(stat_conn)
+stat_conn=psycopg2.connect(connstr)#,async=True)
+#psycopg2.extras.wait_select(stat_conn)
+stat_conn.autocommit=True
 stat_cur=stat_conn.cursor()
 
 socr_cache={}
@@ -25,7 +26,7 @@ socr_cache={}
     
 typ_cond={}
 def InitCond():
-    global typ_cond,typ_b_cond
+    global typ_cond
     typ_cond={'all':'',
           'found':'EXISTS(SELECT aoguid FROM '+prefix+pl_aso_tbl+' WHERE aoguid=fias_addr_obj.aoguid)',
           'street':'EXISTS(SELECT aoguid FROM '+prefix+way_aso_tbl+' WHERE aoguid=fias_addr_obj.aoguid)',
@@ -129,10 +130,10 @@ class fias_AO(object):
     def getFiasData(self):
         cur=conn.cursor()
         if self.guid:
-            cur.execute('SELECT parentguid, updatedate, postalcode, code, okato, oktmo, offname, formalname,shortname,aolevel FROM fias_addr_obj WHERE aoguid=%s',(self.guid,))
+            cur.execute('SELECT parentguid, updatedate, postalcode, code, okato, oktmo, offname, formalname, shortname, aolevel FROM fias_addr_obj WHERE aoguid=%s',(self.guid,))
             firow=cur.fetchone()
         else:
-            firow=[None,None,None,None,None,None,None,None,None]
+            firow=[None,None,None,None,None,None,None,None,None,None]
         if firow:
             self._parent=firow[0]
             self._fias={}
@@ -201,8 +202,8 @@ class fias_AO(object):
         if not hasattr(self,'_parentO'):
             if not hasattr(self,'_parent'):
                 self.getFiasData()
-            if self._parent==None:
-                return self
+            #if self._parent==None:
+            #    return self
             self._parentO=fias_AO(self._parent)
         return self._parentO
     
@@ -251,9 +252,9 @@ class fias_AO(object):
             if self.guid==None:
                 res=None
             else:
-                psycopg2.extras.wait_select(stat_conn)
+                #psycopg2.extras.wait_select(stat_conn)
                 stat_cur.execute('SELECT ao_all, found, street, all_b, found_b FROM fiosm_stat WHERE aoguid=%s',(self.guid,))
-                psycopg2.extras.wait_select(stat_conn)
+                #psycopg2.extras.wait_select(stat_conn)
                 res=stat_cur.fetchone()
                 
             if res==None:
@@ -292,19 +293,29 @@ class fias_AO(object):
         if hasattr(self,'_name'):
             return self._name
         
-        if self.kind==2:
-            cur_=conn.cursor() 
-            cur_.execute('SELECT name FROM '+prefix+poly_table+' o, '+prefix+pl_aso_tbl+' a WHERE a.aoguid=%s AND o.osm_id=a.osm_admin ',(self.guid,))
-            name=cur_.fetchone()
-            if name:
-                self._name=name[0]
-                return name[0]   
-        self._name=self.names().next()
+        if True:#hasattr(self,'_osmid'): #speedup on web interface
+            cur_=conn.cursor()
+            if self.kind==2:
+                cur_.execute('SELECT name FROM '+prefix+poly_table+'  WHERE osm_id=%s ',(self.osmid,))
+                name=cur_.fetchone()
+                if name:
+                    self._name=name[0]
+            if self.kind==1:
+                cur_.execute('SELECT name FROM '+prefix+ways_table+'  WHERE osm_id=%s ',(self.osmid,))
+                name=cur_.fetchone()
+                if name:
+                    self._name=name[0]
+        
+        if not hasattr(self,'_name'):
+            self._name=self.names().next()
         return self._name
 
     @property
     def osmid(self):
         if not hasattr(self,'_osmid'):
+            if hasattr(self,'_kind') and not self._kind:
+                return None
+            #Do not even try if not found
             if not self.calkind():
                 return None
             #and if we have kind other than 'not found' then we 
