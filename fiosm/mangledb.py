@@ -47,8 +47,14 @@ def AddMangleGuess(name):
         return
     cur_=conn.cursor()
     #Do not save twice
-    cur_.execute("SELECT name FROM mangle_guess WHERE name=%s",(name,))
+    cur_.execute("SELECT name FROM "+guess_tbl+" WHERE name=%s",(name,))
     if cur_.fetchone():
         return
-    
-    cur_.execute("INSERT INTO mangle_guess (name) VALUES (%s)",(name,))
+    cur_.execute("INSERT INTO "+guess_tbl+" (name) VALUES (%s)",(name,))
+
+if __name__=='__main__':
+    conn=psycopg2.connect(connstr)
+    conn.autocommit=True
+    cur=conn.cursor()
+    cur.execute("DROP TABLE IF EXISTS "+guess_tbl)
+    cur.execute("CREATE TABLE "+guess_tbl+"(name varchar,  valid  smallint);")
