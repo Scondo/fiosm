@@ -2,6 +2,7 @@
 # -*- coding: UTF-8 -*-
 from __future__ import division
 
+import logging
 import psycopg2
 import ppygis
 import psycopg2.extras
@@ -19,7 +20,8 @@ stat_conn=psycopg2.connect(connstr,async=True)
 psycopg2.extras.wait_select(stat_conn)
 stat_cur=stat_conn.cursor()
 
-import logging
+socr_cache={}
+#with keys socr#aolev
     
 typ_cond={}
 def InitCond():
@@ -127,7 +129,7 @@ class fias_AO(object):
     def getFiasData(self):
         cur=conn.cursor()
         if self.guid:
-            cur.execute('SELECT parentguid, updatedate, postalcode, code, okato, oktmo, offname, formalname,shortname FROM fias_addr_obj WHERE aoguid=%s',(self.guid,))
+            cur.execute('SELECT parentguid, updatedate, postalcode, code, okato, oktmo, offname, formalname,shortname,aolevel FROM fias_addr_obj WHERE aoguid=%s',(self.guid,))
             firow=cur.fetchone()
         else:
             firow=[None,None,None,None,None,None,None,None,None]
@@ -142,6 +144,7 @@ class fias_AO(object):
             self._offname=firow[6]
             self._formalname=firow[7]
             self._shortname=firow[8]
+            self._aolevel=firow[9]
             self._is=True
         else:
             self._is=False
@@ -169,11 +172,15 @@ class fias_AO(object):
     
     @property
     def fullname(self):
+        key=u"#".join((self._shortname,str(self._aolevel)))
+        if key in socr_cache:
+            return socr_cache[key]
         cur_=conn.cursor()
-        cur_.execute("""SELECT lower(s.socrname) FROM fias_addr_obj a, fias_socr_obj s
-        WHERE a.shortname = s.scname AND a.aolevel=s.level AND aoguid=%s """,(self.guid,))
+        cur_.execute("""SELECT lower(socrname) FROM fias_socr_obj s
+        WHERE scname=%s AND level=%s """,(self._shortname,self._aolevel))
         res=cur_.fetchone()
         if res:
+            socr_cache[key]=res[0]
             return res[0]
         
     def names(self,formal=True):
