@@ -61,10 +61,12 @@ def GetAreaList(parentguid,typ,count=False):
 def SaveAreaStat(guid,stat):
     if guid==None :
         return
-    psycopg2.extras.wait_select(stat_conn)
+    #psycopg2.extras.wait_select(stat_conn)
     stat['guid']=guid
-    stat_cur.execute('''INSERT INTO fiosm_stat (ao_all, found, street, all_b, found_b,aoguid) 
-    VALUES (%(all)s , %(found)s , %(street)s , %(all_b)s , %(found_b)s , %(guid)s) ''',stat)
+    if ('all' in stat) and ('found' in stat) and ('street' in stat) and ('all_b' in stat) and ('found_b' in stat):
+        stat_cur.execute('DELETE FROM fiosm_stat WHERE aoguid=%s',(guid,))
+        stat_cur.execute('''INSERT INTO fiosm_stat (ao_all, found, street, all_b, found_b,aoguid) 
+        VALUES (%(all)s , %(found)s , %(street)s , %(all_b)s , %(found_b)s , %(guid)s) ''',stat)
 
 class fias_AO(object):
     def __init__(self,guid,kind=None,osmid=None,parent=None):
@@ -77,7 +79,7 @@ class fias_AO(object):
         if parent:
             self._parent=parent
         self._subs={}
-
+        self._stat={}
     
     def calkind(self):
         cur=conn.cursor()
@@ -213,42 +215,51 @@ class fias_AO(object):
             self.getFiasData()
         return self._is
     
-    def CalcAreaStat(self,force=False):
-  
-        elem={}
-        for typ_ in ('all','found','street'):
-            if not force and elem.has_key(typ_):
-                pass
-            elif not force and self._subs.has_key(typ_):
-                elem[typ_]=len(self._subs[typ_])
-            elif (elem.has_key('all') and not elem['all']) or (self.kind==0 and typ_=='found') or (self.kind<2 and typ_=='street'):
-                elem[typ_]=0
+    def CalcAreaStat(self,typ,force=False):
+        if not force and typ in self._stat:
+            return
+        #elem={}
+        if typ in ('all','found','street'):
+            if not force and self._subs.has_key(typ):
+                self._stat[typ]=len(self._subs[typ])
+            elif ('all' in self._stat and self._stat['all']==0) or (self.kind==0 and typ=='found') or (self.kind<2 and typ=='street'):
+                self._stat[typ]=0
             else:
-                elem[typ_]=GetAreaList(self.guid,typ_,True).next()
-
-        cur_=conn.cursor()
-        if self.guid==None or self.kind==0:
-            elem['all_b']=0
-        elif force or (not 'all_b' in elem):
-            cur_.execute("SELECT count(distinct(houseguid)) FROM fias_house WHERE aoguid=%s",(self.guid,))
-            elem['all_b']=cur_.fetchone()[0]
+                self._stat[typ]=GetAreaList(self.guid,typ,True).next()
         
-        if not elem['all_b']:
-            elem['found_b']=0
-        elif not force and 'found_b' in self._subs:
-            elem['found_b']=len(self._subs['found_b'])
-        elif force or not 'found_b' in elem:
-            cur_.execute("SELECT count(distinct(f.houseguid)) FROM fias_house f, "+prefix+bld_aso_tbl+" o WHERE f.aoguid=%s AND f.houseguid=o.aoguid",(self.guid,))
-            elem['found_b']=cur_.fetchone()[0]
-        
-        return elem
+        elif typ.endswith('_b'):
+            cur_=conn.cursor()
+            if typ=='all_b':
+                if self.guid==None or self.kind==0:
+                    self._stat['all_b']=0
+                elif force or (not 'all_b' in self._stat):
+                    cur_.execute("SELECT count(distinct(houseguid)) FROM fias_house WHERE aoguid=%s",(self.guid,))
+                    self._stat['all_b']=cur_.fetchone()[0]
+            elif typ=='found_b':
+                if self.stat('all_b')==0:
+                    self._stat['found_b']=0
+                elif not force and 'found_b' in self._subs:
+                    self._stat['found_b']=len(self._subs['found_b'])
+                elif force or not 'found_b' in self._stat:
+                    cur_.execute("SELECT count(distinct(f.houseguid)) FROM fias_house f, "+prefix+bld_aso_tbl+" o WHERE f.aoguid=%s AND f.houseguid=o.aoguid",(self.guid,))
+                    self._stat['found_b']=cur_.fetchone()[0]
 
-    @property
-    def stat(self):
+        elif typ.endswith('_r'):
+            res=self.stat(typ[:-2])
+            for ao in self.subs('found'):
+                res+=fias_AO(ao,2).stat(typ)
+            for ao in self.subs('street'):
+                res+=fias_AO(ao,1).stat(typ[:-2])
+            for ao in self.subs('not found'):
+                res+=fias_AO(ao,0).stat(typ[:-2])
+        
+    def stat(self,typ):
         '''Statistic of childs for item'''
-        if hasattr(self,'stat_'):
-            res=self.stat_
-        else:
+        if typ=='not found':
+            return self.stat('all')-self.stat('found')-self.stat('street')
+        elif typ=='not found_b':
+            return self.stat('all_b')-self.stat('found_b')
+        if not typ in self._stat:
             if self.guid==None:
                 res=None
             else:
@@ -257,33 +268,17 @@ class fias_AO(object):
                 #psycopg2.extras.wait_select(stat_conn)
                 res=stat_cur.fetchone()
                 
-            if res==None:
-                res=self.CalcAreaStat()
-                SaveAreaStat(self.guid,res)
-                self.stat_=res
-            else:
-                res={'all':res[0],
-                 'found':res[1],
-                 'street':res[2],
-                 'all_b':res[3],
-                 'found_b':res[4]
-                 }
-                self.stat_=res      
-        res['not found']=res['all']-res['found']-res['street']
-        res['not found_b']=res['all_b']-res['found_b']
-        return res
-    
-    @property
-    def statR(self):
-        res={}
-        for ao in self.subs('found'):
-            res+=fias_AO(ao,2).statR()
-        for ao in self.subs('street'):
-            res+=fias_AO(ao,1).stat()
-        for ao in self.subs('not found'):
-            res+=fias_AO(ao,0).stat()
-        res+=self.stat()
-        return res
+            if res!=None:
+                self._stat['all']=res[0]
+                self._stat['found']=res[1]
+                self._stat['street']=res[2]
+                self._stat['all_b']=res[3]
+                self._stat['found_b']=res[4]
+
+            if self._stat.get(typ)==None:                 
+                self.CalcAreaStat(typ)
+                SaveAreaStat(self.guid,self._stat)
+        return self._stat[typ]   
         
     @property
     def name(self):
@@ -376,7 +371,7 @@ class fias_AO(object):
         return self._subs[typ_]
         
     def move_sub(self,guid,tgt):
-        if tgt.endswith('_b') and typ_b_cond.has_key(tgt[:-2]):
+        if tgt.endswith('_b'):
             if self._subs.has_key('found_b'):
                 self._subs['found_b'].discard(guid)
 

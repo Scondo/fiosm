@@ -20,31 +20,31 @@
 <tr><th colspan="2">Статистика:</th></tr>
 					<tr>
 						<td>Всего адресных элементов</td>
-						<td><a href="${myself.link['all']}">${myself.stat['all']}</a></td>
+						<td><a href="${myself.link['all']}">${myself.stat('all')}</a></td>
 					</tr>
 					<tr>
 						<td>Найдено территорий</td>
-						<td><a href="${myself.link['found']}">${myself.stat['found']}</a></td>
+						<td><a href="${myself.link['found']}">${myself.stat('found')}</a></td>
 					</tr>
 					<tr>
 						<td>Найдено улиц</td>
-						<td><a href="${myself.link['street']}">${myself.stat['street']}</a></td>
+						<td><a href="${myself.link['street']}">${myself.stat('street')}</a></td>
 					</tr>
 					<tr>
 						<td>Не найдено</td>
-						<td><a href="${myself.link['not found']}">${myself.stat['not found']}</a></td>
+						<td><a href="${myself.link['not found']}">${myself.stat('not found')}</a></td>
 					</tr>
 					<tr>
 						<td>Всего домов</td>
-						<td>${myself.stat['all_b']}</td>
+						<td>${myself.stat('all_b')}</td>
 					</tr>
 					<tr>
 						<td>Найдено домов</td>
-						<td>${myself.stat['found_b']}</td>
+						<td>${myself.stat('found_b')}</td>
 					</tr>
 					<tr>
 						<td>Не найдено домов</td>
-						<td>${myself.stat['not found_b']}</td>
+						<td>${myself.stat('not found_b')}</td>
 					</tr>
 				</table>
 			</td>
@@ -59,14 +59,14 @@
 			</thead>
 			<tr tal:repeat="row list">
 				<td>${row.name}</td>
-				<td><a href="${row.link['all']}">${row.stat['all']}</a></td>
-				<td><a href="${row.link['found']}">${row.stat['found']}</a></td>
-				<td><a href="${row.link['street']}">${row.stat['street']}</a></td>
-				<td><a href="${row.link['not found']}">${row.stat['not found']}</a></td>
+				<td><a href="${row.link['all']}">${row.stat('all')}</a></td>
+				<td><a href="${row.link['found']}">${row.stat('found')}</a></td>
+				<td><a href="${row.link['street']}">${row.stat('street')}</a></td>
+				<td><a href="${row.link['not found']}">${row.stat('not found')}</a></td>
 
-				<td>${row.stat['all_b']}</td>
-				<td>${row.stat['found_b']}</td>
-				<td>${row.stat['not found_b']}</td>
+				<td>${row.stat('all_b')}</td>
+				<td>${row.stat('found_b')}</td>
+				<td>${row.stat('not found_b')}</td>
 			</tr>
 		</table>
 </body>
