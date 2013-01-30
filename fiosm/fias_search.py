@@ -286,6 +286,9 @@ def AssociateO(elem):
                 melt.conn.autocommit=True
                 elem.move_sub(sub,'street')
                 AssociateO(melt.fias_AO(sub,1,streets[0]))
+    elem.stat('not found')
+    elem.stat('not found_b')
+
 
 def AssORoot():
     '''Associate and process federal subject (they have no parent id and no parent geom)
