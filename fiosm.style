@@ -29,7 +29,7 @@ node,way   source       text         delete   # This indicates that we shouldn't
 node,way   created_by   text         delete
 
 #node,way   access       text         linear
-node,way   addr:housename      text  linear
+node,way   addr:street      text  linear
 node,way   addr:housenumber    text  linear
 #node,way   addr:interpolation  text  linear 
 node,way   admin_level  text         linear
