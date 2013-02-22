@@ -218,8 +218,8 @@ class fias_AO(object):
             return
         #elem={}
         if typ in ('all','found','street'):
-            if not force and self._subs.has_key(typ):
-                self._stat[typ]=len(self._subs[typ])
+            if not force and hasattr(self, '_subO') and self._subO.has_key(typ):
+                self._stat[typ] = len(self._subO[typ])
             elif ('all' in self._stat and self._stat['all']==0) or (self.kind==0 and typ=='found') or (self.kind<2 and typ=='street'):
                 self._stat[typ]=0
             else:
@@ -313,6 +313,10 @@ class fias_AO(object):
             self._name=self.names().next()
         return self._name
 
+    @name.setter
+    def name(self, value):
+        self._name = value
+
     @property
     def osmid(self):
         if not hasattr(self,'_osmid'):
@@ -344,10 +348,26 @@ class fias_AO(object):
         return self._geom
 
 
+class fias_House(object):
+    def __init__(self, guid):
+        self.guid = guid
+        self.parent = None
+
+        self.number = None
+        self.build = None
+        self.struc = None
+        self.strtype = None
+
+        self.osmkind = None
+        self.osmid = None
+
+
 class fias_AONode(fias_AO):
     def __init__(self, *args, **kwargs):
         if type(args[0]) == fias_AO:
-            self = copy(args[0])
+            for it in args[0].__dict__.keys():
+                self.__setattr__(it, args[0].__getattribute__(it))
+                #setattr = copy(args[0])
             self.__class__ = fias_AONode
         else:
             fias_AO.__init__(self, *args, **kwargs)
@@ -373,26 +393,29 @@ class fias_AONode(fias_AO):
         else:
             stat_join = ""
             stat_sel = ""
+
+        fias_sel = "f.formalname, f.shortname, f.offname, f.aolevel"
         #make request
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         if typ == 'found':
             osmid = 'osm_admin'
-            cur.execute('SELECT f.aoguid, f.formalname, f.shortname, f.aolevel, a.' + osmid + ', o.name' + stat_sel + ' FROM fias_addr_obj f INNER JOIN ' + prefix + pl_aso_tbl + ' a ON f.aoguid=a.aoguid INNER JOIN ' + prefix + poly_table + ' o ON a.' + osmid + '=o.osm_id ' + stat_join + ' WHERE parentguid' + cmpop + '%s', (self.guid,))
+            cur.execute('SELECT f.aoguid, ' + fias_sel + ', a.' + osmid + ', o.name' + stat_sel + ' FROM fias_addr_obj f INNER JOIN ' + prefix + pl_aso_tbl + ' a ON f.aoguid=a.aoguid INNER JOIN ' + prefix + poly_table + ' o ON a.' + osmid + '=o.osm_id ' + stat_join + ' WHERE parentguid' + cmpop + '%s', (self.guid,))
             kind = 2
         elif typ == 'street':
             kind = 1
             osmid = 'osm_way'
-            cur.execute('SELECT DISTINCT ON(f.aoguid) f.formalname, f.shortname, f.aolevel, a.' + osmid + ', o.name, s.* FROM fias_addr_obj f INNER JOIN ' + prefix + way_aso_tbl + ' a ON f.aoguid=a.aoguid INNER JOIN ' + prefix + ways_table + ' o ON a.' + osmid + '=o.osm_id ' + stat_join + ' WHERE parentguid' + cmpop + '%s', (self.guid,))
+            cur.execute('SELECT DISTINCT ON(f.aoguid) ' + fias_sel + ', a.' + osmid + ', o.name' + stat_sel + ' FROM fias_addr_obj f INNER JOIN ' + prefix + way_aso_tbl + ' a ON f.aoguid=a.aoguid INNER JOIN ' + prefix + ways_table + ' o ON a.' + osmid + '=o.osm_id ' + stat_join + ' WHERE parentguid' + cmpop + '%s', (self.guid,))
         elif typ == 'not found':
             kind = 0
             osmid = None
-            cur.execute('SELECT f.aoguid, f.formalname, f.shortname, f.aolevel' + stat_sel + ' FROM fias_addr_obj ' + stat_join + ' WHERE NOT(' + typ_cond['found'] + ' OR ' + typ_cond['street'] + ') AND parentguid' + cmpop + '%s', (self.guid,))
+            cur.execute('SELECT f.aoguid, ' + fias_sel + stat_sel + ' FROM fias_addr_obj f ' + stat_join + ' WHERE NOT(' + typ_cond['found'] + ' OR ' + typ_cond['street'] + ') AND parentguid' + cmpop + '%s', (self.guid,))
         else:
             return []
         self._subO[typ] = []
         for row in cur.fetchall():
             el = fias_AO(row['aoguid'], kind, row[osmid] if osmid else None, self.guid)
             el._formalname = row['formalname']
+            el._offname = row['offname']
             el._shortname = row['shortname']
             el._aolevel = row['aolevel']
             el.pullstat(row)
@@ -415,17 +438,8 @@ class fias_AONode(fias_AO):
             res.extend(self.subO('not found'))
             return res
 
-
-    def move_sub(self,guid,tgt):
-        if tgt.endswith('_b'):
-            if self._subs.has_key('found_b'):
-                self._subs['found_b'].discard(guid)
-
-        if typ_cond.has_key(tgt):
-            if self._subs.has_key('found'):
-                self._subs['found'].discard(guid)
-            if self._subs.has_key('street'):
-                self._subs['street'].discard(guid)
-
-        if self._subs.has_key(tgt):
-            self._subs[tgt].add(guid)
+    def child_found(self, child, typ):
+        if 'not found' in self._subO:
+            self._subO['not found'].remove(child)
+        if typ in self._subO:
+            self._subO[typ].append(child)

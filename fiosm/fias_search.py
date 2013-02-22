@@ -197,6 +197,7 @@ def FindAssocPlace(elem,pgeom):
     for name in elem.names(formal):
         checked=[it[1] for it in candidates if it[0].lower()==name.lower()]
         if checked:
+            elem.name = name
             return checked[0]
 
 def FindAssocStreet(elem,pgeom):
@@ -207,8 +208,9 @@ def FindAssocStreet(elem,pgeom):
         checked=[it[1] for it in candidates if it[0].lower()==name.lower()]
         if checked:
             mangledb.AddMangleGuess(name)
+            elem.name = name
             return checked
-        
+
 def AssocBuild(elem):
     '''Search and save building association for elem
     '''
@@ -254,7 +256,7 @@ def AssociateO(elem):
             for street in streets:
                 cur.execute("SELECT osm_way FROM "+prefix+way_aso_tbl+" WHERE osm_way=%s",(street,))
                 if not cur.fetchone():
-                    cur.execute("INSERT INTO "+prefix+way_aso_tbl+" (aoguid,osm_way) VALUES (%s, %s)",(sub,street))
+                    cur.execute("INSERT INTO " +  prefix+way_aso_tbl + " (aoguid,osm_way) VALUES (%s, %s)", (sub.guid, street))
             melt.conn.commit()
             melt.conn.autocommit=True
             AssociateO(sub_)
@@ -273,20 +275,24 @@ def AssociateO(elem):
         if adm_id==None:
             adm_id=FindAssocPlace(sub_,elem.geom)
         if not adm_id==None:
-            cur.execute("INSERT INTO "+prefix+pl_aso_tbl+" (aoguid,osm_admin) VALUES (%s, %s)",(sub,adm_id))
-            elem.move_sub(sub,'found')
-            AssociateO(melt.fias_AONode(sub,2,adm_id))
+            cur.execute("INSERT INTO " + prefix + pl_aso_tbl + " (aoguid,osm_admin) VALUES (%s, %s)", (sub.guid, adm_id))
+            #elem.move_sub(sub,'found')
+            sub_._osmid = adm_id
+            sub_.kind = 2
+            AssociateO(sub_)
         else:
             logging.debug("Searching street:"+repr(sub)+" in "+repr(elem.guid))
             streets=FindAssocStreet(sub_,elem.geom)
             if streets<>None:
                 melt.conn.autocommit=False
                 for street in streets:
-                    cur.execute("INSERT INTO "+prefix+way_aso_tbl+" (aoguid,osm_way) VALUES (%s, %s)",(sub,street))
+                    cur.execute("INSERT INTO " + prefix + way_aso_tbl + " (aoguid,osm_way) VALUES (%s, %s)", (sub.guid, street))
                 melt.conn.commit()
                 melt.conn.autocommit=True
-                elem.move_sub(sub,'street')
-                AssociateO(melt.fias_AO(sub,1,streets[0]))
+                #elem.move_sub(sub,'street')
+                sub_.kind = 1
+                sub_._osmid = streets[0]
+                AssociateO(sub_)
 #    elem.stat('not found')
 #    elem.stat('not found_b')
 
