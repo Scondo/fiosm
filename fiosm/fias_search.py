@@ -232,6 +232,7 @@ def AssocBuild(elem):
     melt.conn.commit()
     melt.conn.autocommit=True
 
+
 def AssociateO(elem):
     '''Search and save association for all subelements of elem
     
@@ -242,11 +243,11 @@ def AssociateO(elem):
     if not elem.kind:
         return
     #run processing for found to parse their subs
-    for sub in elem.subs('found'):
-        AssociateO(melt.fias_AO(sub,2))
+    for sub in elem.subAO('found', False):
+        AssociateO(melt.fias_AONode(sub))
     #find new elements for street if any
-    for sub in elem.subs('street'):
-        sub_=melt.fias_AO(sub,1)
+    for sub in elem.subAO('street', False):
+        sub_ = melt.fias_AONode(sub)
         streets=FindAssocStreet(sub_,elem.geom)
         if streets<>None:
             melt.conn.autocommit=False
@@ -259,8 +260,8 @@ def AssociateO(elem):
             AssociateO(sub_)
     #search for new elements
     subareas=Subareas(elem.osmid)
-    for sub in list(elem.subs('not found')):
-        sub_=melt.fias_AO(sub,0)
+    for sub in elem.subAO('not found', False):
+        sub_ = melt.fias_AONode(sub)
         adm_id=None
         if subareas:
             for name in sub_.names():
@@ -274,7 +275,7 @@ def AssociateO(elem):
         if not adm_id==None:
             cur.execute("INSERT INTO "+prefix+pl_aso_tbl+" (aoguid,osm_admin) VALUES (%s, %s)",(sub,adm_id))
             elem.move_sub(sub,'found')
-            AssociateO(melt.fias_AO(sub,2,adm_id))
+            AssociateO(melt.fias_AONode(sub,2,adm_id))
         else:
             logging.debug("Searching street:"+repr(sub)+" in "+repr(elem.guid))
             streets=FindAssocStreet(sub_,elem.geom)
@@ -286,20 +287,20 @@ def AssociateO(elem):
                 melt.conn.autocommit=True
                 elem.move_sub(sub,'street')
                 AssociateO(melt.fias_AO(sub,1,streets[0]))
-    elem.stat('not found')
-    elem.stat('not found_b')
+#    elem.stat('not found')
+#    elem.stat('not found_b')
 
 
 def AssORoot():
     '''Associate and process federal subject (they have no parent id and no parent geom)
     '''
     for sub in melt.GetAreaList('','all'):
-        child=melt.fias_AO(sub)
+        child=melt.fias_AONode(sub)
         if not child.kind:
             adm_id=FindAssocPlace(child,None)
             if not adm_id==None:
                 cur.execute("INSERT INTO "+prefix+pl_aso_tbl+" (aoguid,osm_admin) VALUES (%s, %s)",(sub,adm_id))
-                child=melt.fias_AO(sub,2,adm_id)
+                child=melt.fias_AONode(sub,2,adm_id)
         
         if child.kind:    
             AssociateO(child)

@@ -31,7 +31,7 @@ def details_view(request):
         guid=uuid.UUID(guid)
     except ValueError:
         raise HTTPBadRequest()
-    myself=melt.fias_AO(guid)
+    myself=melt.fias_AONode(guid)
     statlink=request.route_url('found', guid=guid, typ='all')
     return {"fias":myself.fias,"statlink":statlink,"name":myself.name}
 
@@ -52,9 +52,11 @@ def found_view(request):
     try:
         guid=uuid.UUID(guid)
     except ValueError:
+        if guid=='None':
+            guid=None
         pass
     #Make check for area exist
-    myself=melt.fias_AO(guid)
+    myself=melt.fias_AONode(guid)
     if not myself.isok:
         pass
     add_links(myself)
@@ -66,12 +68,12 @@ def found_view(request):
     myself.link['details']=request.route_url('details', guid=myself.guid, kind='ao')
    
        
-    agen=myself.subs(typ) #melt.GetAreaList(guid,typ)
+    agen=myself.subO(typ) #melt.GetAreaList(guid,typ)
     #alist=[makerow(_guid for _guid in agen)]
     alist=[]
-    for _guid in agen:
-        el=melt.fias_AO(_guid,parent=guid)
-        el.kind=typ
+    for el in agen:
+        #el=melt.fias_AO(_guid,parent=guid)
+        #el.kind=typ
         add_links(el)
         alist.append(el)
     return {'project':'fiosm',"list":alist, "myself":myself}
