@@ -363,6 +363,17 @@ class fias_HO(object):
         # 1 - point
         self.osmid = None
 
+    def equal_to_str(self, guess):
+        if self.build == None and self.struc == None:
+            return bool(self.number == guess)
+        fias_number = u''
+        if self.number:
+            fias_number = fias_number + self.number
+        if self.build:
+            fias_number = fias_number + u' к' + self.build
+        if self.struc:
+            fias_number = fias_number + u' с' + self.struc
+        return bool(fias_number == guess)
 
 class fias_AONode(fias_AO):
     def __init__(self, *args, **kwargs):

@@ -218,16 +218,11 @@ def AssocBuild(elem):
     osm_h=cur.fetchall()
     if not osm_h:
         return []
-    cur.execute("SELECT houseguid, housenum, buildnum, strucnum FROM fias_house WHERE aoguid=%s",(elem.guid,))
-    fias_h=cur.fetchall()
-    if not fias_h:
-        return []
-    found=[]
+    found = []
     for hid, number in osm_h:
-        for hguid, housenum, buildnum, strucnum in fias_h:
-            fias_number=(housenum if housenum else '')+(u'к'+buildnum if buildnum else '') + (u'с'+strucnum if strucnum else '') 
-            if number==fias_number:
-                found.append({'h_id':hid, 'guid':hguid})
+        for house in elem.subO('not found_b'):
+            if house.equal_to_str(number):
+                found.append({'h_id': hid, 'guid': house.guid})
     melt.conn.autocommit=False
     for myrow in found:
         cur.execute("INSERT INTO "+prefix+bld_aso_tbl+" (aoguid,osm_build,point) VALUES (%s, %s, 0)",(myrow['guid'],myrow['h_id']))
