@@ -71,7 +71,6 @@ class fias_AO(object):
             self._osmid=osmid
         if parent:
             self._parent=parent
-        self._subs={}
         self._stat={}
     
     def calkind(self):
@@ -226,6 +225,9 @@ class fias_AO(object):
                 self._stat[typ]=GetAreaList(self.guid,typ,True).next()
         
         elif typ.endswith('_b'):
+            if (not force) and hasattr(self, '_subO'):
+                if 'all_b' in self._subO:
+                    return len(self.subO(typ))
             cur_=conn.cursor()
             if typ=='all_b':
                 if self.guid==None or self.kind==0:
@@ -236,8 +238,6 @@ class fias_AO(object):
             elif typ=='found_b':
                 if self.stat('all_b')==0:
                     self._stat['found_b']=0
-                elif not force and 'found_b' in self._subs:
-                    self._stat['found_b']=len(self._subs['found_b'])
                 elif force or not 'found_b' in self._stat:
                     cur_.execute("SELECT count(distinct(f.houseguid)) FROM fias_house f, "+prefix+bld_aso_tbl+" o WHERE f.aoguid=%s AND f.houseguid=o.aoguid",(self.guid,))
                     self._stat['found_b']=cur_.fetchone()[0]
@@ -348,10 +348,10 @@ class fias_AO(object):
         return self._geom
 
 
-class fias_House(object):
+class fias_HO(object):
     def __init__(self, guid):
         self.guid = guid
-        self.parent = None
+        self.parentguid = None
 
         self.number = None
         self.build = None
@@ -359,6 +359,8 @@ class fias_House(object):
         self.strtype = None
 
         self.osmkind = None
+        # 0 - polygon
+        # 1 - point
         self.osmid = None
 
 
@@ -373,14 +375,31 @@ class fias_AONode(fias_AO):
             fias_AO.__init__(self, *args, **kwargs)
         self._subO = {}
 
-    def builds(self, point):
-        point_ = 1 if point else 0
-        cur_ = conn.cursor()
-        cur_.execute("SELECT o.osm_build, o.aoguid FROM fias_house f, " + prefix + bld_aso_tbl + " o WHERE f.houseguid=o.aogiid AND f.aoguid=%s AND o.point=%s", (self.guid, point_))  
-        res = {}
-        for it in cur_.fetchall():
-            res[it[0]] = it[1]
-        return res
+    def subHO(self, typ):
+        if self.kind == 0 and typ != 'not found_b':
+            return []
+        if self.guid == None:
+            return []
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        if typ == 'found_b':
+            t_cond = 'AND NOT (o.osm_build IS NULL)'
+        elif typ == 'not found_b':
+            t_cond = 'AND (o.osm_build IS NULL)'
+        elif typ == 'all_b':
+            t_cond = ''
+        else:
+            return []
+        cur.execute("SELECT o.osm_build, o.point, f.* FROM fias_house f LEFT JOIN " + prefix + bld_aso_tbl + " o ON f.houseguid=o.aoguid WHERE f.aoguid=%s" + t_cond, (self.guid))
+        self._subO[typ] = []
+        for row in cur.fetchall():
+            el = fias_HO(row['f.houseguid'])
+            el.osmid = row['osm_build']
+            el.osmkind = row['point']
+            el.build = row['buildnum']
+            el.number = row['housenum']
+            el.struc = row['strucnum']
+            self._subO[typ].append(el)
+        return self._subO[typ]
 
     def subAO(self, typ, need_stat=True):
         #Voids by kind
@@ -437,6 +456,22 @@ class fias_AONode(fias_AO):
             res.extend(self.subO('street'))
             res.extend(self.subO('not found'))
             return res
+
+        if typ == 'all_b' and 'found_b' in self._subO and 'not found_b' in self._subO:
+            self._subO[typ] = []
+            self._subO[typ].extend(self._subO['found_b'])
+            del self._subO['found_b']
+            self._subO[typ].extend(self._subO['not found_b'])
+            del self._subO['not found_b']
+            return self._subO[typ]
+
+        if typ.endswith('_b'):
+            if 'all_b' in self._subO:
+                if typ == 'found_b':
+                    return filter(lambda h: h.osmid, self._subO['all_b'])
+                elif typ == 'not found_b':
+                    return filter(lambda h: h.osmid == None, self._subO['all_b'])
+            return self.subHO(typ)
 
     def child_found(self, child, typ):
         if 'not found' in self._subO:
