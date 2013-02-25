@@ -211,23 +211,25 @@ class fias_AO(object):
         if not hasattr(self,'_is'):
             self.getFiasData()
         return self._is
-    
-    def CalcAreaStat(self,typ,force=False):
+
+    def CalcAreaStat(self, typ, force=False):
+        #Just paranoid check
         if not force and typ in self._stat:
             return
-        #elem={}
-        if typ in ('all','found','street'):
-            if not force and hasattr(self, '_subO') and self._subO.has_key(typ):
+        #check in pulled children
+        if not force and hasattr(self, '_subO') and typ in self._subO:
                 self._stat[typ] = len(self._subO[typ])
-            elif ('all' in self._stat and self._stat['all']==0) or (self.kind==0 and typ=='found') or (self.kind<2 and typ=='street'):
+
+        if typ in ('all','found','street'):
+            if ('all' in self._stat and self._stat['all']==0) or (self.kind==0 and typ=='found') or (self.kind<2 and typ=='street'):
                 self._stat[typ]=0
             else:
                 self._stat[typ]=GetAreaList(self.guid,typ,True).next()
-        
+
         elif typ.endswith('_b'):
-            if (not force) and hasattr(self, '_subO'):
-                if 'all_b' in self._subO:
-                    return len(self.subO(typ))
+            #all building children are easily available from all_b
+            if (not force) and hasattr(self, '_subO') and 'all_b' in self._subO:
+                return len(self.subO(typ))
             cur_=conn.cursor()
             if typ=='all_b':
                 if self.guid==None or self.kind==0:
@@ -374,6 +376,7 @@ class fias_HO(object):
         if self.struc:
             fias_number = fias_number + u' с' + self.struc
         return bool(fias_number == guess)
+
 
 class fias_AONode(fias_AO):
     def __init__(self, *args, **kwargs):
