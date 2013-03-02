@@ -271,8 +271,8 @@ def AssociateO(elem):
             adm_id=FindAssocPlace(sub_,elem.geom)
         if not adm_id==None:
             cur.execute("INSERT INTO " + prefix + pl_aso_tbl + " (aoguid,osm_admin) VALUES (%s, %s)", (sub.guid, adm_id))
-            #elem.move_sub(sub,'found')
-            sub_._osmid = adm_id
+            elem.child_found(sub, 'found')
+            sub_.osmid = adm_id
             sub_.kind = 2
             AssociateO(sub_)
         else:
@@ -284,9 +284,9 @@ def AssociateO(elem):
                     cur.execute("INSERT INTO " + prefix + way_aso_tbl + " (aoguid,osm_way) VALUES (%s, %s)", (sub.guid, street))
                 melt.conn.commit()
                 melt.conn.autocommit=True
-                #elem.move_sub(sub,'street')
+                elem.child_found(sub, 'street')
                 sub_.kind = 1
-                sub_._osmid = streets[0]
+                sub_.osmid = streets[0]
                 AssociateO(sub_)
 #    elem.stat('not found')
 #    elem.stat('not found_b')

@@ -330,7 +330,11 @@ class fias_AO(object):
             #and if we have kind other than 'not found' then we 
             #receive osmid while we calculate
         return self._osmid
-          
+
+    @osmid.setter
+    def osmid(self, value):
+        self._osmid = value
+
     @property
     def geom(self):
         '''Geometry where buildings can be'''
@@ -403,7 +407,7 @@ class fias_AONode(fias_AO):
             t_cond = ''
         else:
             return []
-        cur.execute("SELECT o.osm_build, o.point, f.* FROM fias_house f LEFT JOIN " + prefix + bld_aso_tbl + " o ON f.houseguid=o.aoguid WHERE f.aoguid=%s" + t_cond, (self.guid))
+        cur.execute("SELECT o.osm_build, o.point, f.* FROM fias_house f LEFT JOIN " + prefix + bld_aso_tbl + " o ON f.houseguid=o.aoguid WHERE f.aoguid=%s" + t_cond, (self.guid,))
         self._subO[typ] = []
         for row in cur.fetchall():
             el = fias_HO(row['f.houseguid'])
