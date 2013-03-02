@@ -400,14 +400,14 @@ class fias_AONode(fias_AO):
             return []
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         if typ == 'found_b':
-            t_cond = 'AND NOT (o.osm_build IS NULL)'
+            t_cond = ' AND NOT (o.osm_build IS NULL)'
         elif typ == 'not found_b':
-            t_cond = 'AND (o.osm_build IS NULL)'
+            t_cond = ' AND (o.osm_build IS NULL)'
         elif typ == 'all_b':
             t_cond = ''
         else:
             return []
-        cur.execute("SELECT o.osm_build, o.point, f.* FROM fias_house f LEFT JOIN " + prefix + bld_aso_tbl + " o ON f.houseguid=o.aoguid WHERE f.aoguid=%s" + t_cond, (self.guid,))
+        cur.execute("SELECT o.osm_build, o.point, f.* FROM fias_house f LEFT JOIN " + prefix + bld_aso_tbl + " o ON f.houseguid=o.aoguid WHERE f.aoguid=%s " + t_cond, (self.guid,))
         self._subO[typ] = []
         for row in cur.fetchall():
             el = fias_HO(row['f.houseguid'])
