@@ -410,7 +410,7 @@ class fias_AONode(fias_AO):
         cur.execute("SELECT o.osm_build, o.point, f.* FROM fias_house f LEFT JOIN " + prefix + bld_aso_tbl + " o ON f.houseguid=o.aoguid WHERE f.aoguid=%s " + t_cond, (self.guid,))
         self._subO[typ] = []
         for row in cur.fetchall():
-            el = fias_HO(row['f.houseguid'])
+            el = fias_HO(row['houseguid'])
             el.osmid = row['osm_build']
             el.osmkind = row['point']
             el.build = row['buildnum']
