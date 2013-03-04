@@ -213,9 +213,6 @@ class fias_AO(object):
         return self._is
 
     def CalcAreaStat(self, typ, force=False):
-        #Just paranoid check
-        if not force and typ in self._stat:
-            return
         #check in pulled children
         if not force and hasattr(self, '_subO') and typ in self._subO:
                 self._stat[typ] = len(self._subO[typ])
@@ -234,13 +231,13 @@ class fias_AO(object):
             if typ=='all_b':
                 if self.guid==None or self.kind==0:
                     self._stat['all_b']=0
-                elif force or (not 'all_b' in self._stat):
+                else:
                     cur_.execute("SELECT count(distinct(houseguid)) FROM fias_house WHERE aoguid=%s",(self.guid,))
                     self._stat['all_b']=cur_.fetchone()[0]
             elif typ=='found_b':
                 if self.stat('all_b')==0:
                     self._stat['found_b']=0
-                elif force or not 'found_b' in self._stat:
+                else:
                     cur_.execute("SELECT count(distinct(f.houseguid)) FROM fias_house f, "+prefix+bld_aso_tbl+" o WHERE f.aoguid=%s AND f.houseguid=o.aoguid",(self.guid,))
                     self._stat['found_b']=cur_.fetchone()[0]
 
@@ -273,23 +270,19 @@ class fias_AO(object):
             return self.stat('all')-self.stat('found')-self.stat('street')
         elif typ=='not found_b':
             return self.stat('all_b')-self.stat('found_b')
-        if not typ in self._stat:
-            if self.guid==None:
-                res=None
-            else:
-                #psycopg2.extras.wait_select(stat_conn)
-                stat_cur.execute('SELECT ao_all, found, street, all_b, found_b FROM fiosm_stat WHERE aoguid=%s',(self.guid,))
-                #psycopg2.extras.wait_select(stat_conn)
-                res=stat_cur.fetchone()
-                
-            if res!=None:
+        #Try to pull saved stat
+        if not (typ in self._stat) and self.guid != None:
+            stat_cur.execute('SELECT ao_all, found, street, all_b, found_b FROM fiosm_stat WHERE aoguid=%s', (self.guid, ))
+            res = stat_cur.fetchone()
+            if res != None:
                 self.pullstat(res)
-                
-            if self._stat.get(typ)==None:                 
-                self.CalcAreaStat(typ)
-                SaveAreaStat(self.guid,self._stat)
-        return self._stat[typ]   
-        
+        #If still no stat - calculate
+        if self._stat.get(typ) == None:
+            self.CalcAreaStat(typ)
+            SaveAreaStat(self.guid, self._stat)
+        return self._stat[typ]
+
+
     @property
     def name(self):
         '''Name of object as on map'''
@@ -450,7 +443,7 @@ class fias_AONode(fias_AO):
             return []
         self._subO[typ] = []
         for row in cur.fetchall():
-            el = fias_AO(row['aoguid'], kind, row[osmid] if osmid else None, self.guid)
+            el = fias_AO(row[0], kind, row[osmid] if osmid else None, self.guid)
             el._formalname = row['formalname']
             el._offname = row['offname']
             el._shortname = row['shortname']
