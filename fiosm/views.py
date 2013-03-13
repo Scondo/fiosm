@@ -1,18 +1,17 @@
 from pyramid.view import view_config
 from pyramid.httpexceptions import HTTPBadRequest
 
-#this is demo
-@view_config(route_name='home', renderer='templates/mytemplate.pt')
-def my_view(request):
-    return {'project':'fiosm'}
-
-#import psycopg2
 import melt
 import uuid
-#conn=psycopg2.connect("dbname=osm user=osm password=osm host=192.168.56.101")
 
 @view_config(route_name='foundbase', renderer='templates/found.pt')
 def foundbase_view(request):
+    request.matchdict["guid"]=""
+    request.matchdict["typ"]="all"
+    return found_view(request)
+
+@view_config(route_name='foundbase_', renderer='templates/found.pt')
+def foundbase2_view(request):
     request.matchdict["guid"]=""
     request.matchdict["typ"]="all"
     return found_view(request)
@@ -66,14 +65,9 @@ def found_view(request):
         myself.link['top']=''
 
     myself.link['details']=request.route_url('details', guid=myself.guid, kind='ao')
-   
-       
-    agen=myself.subO(typ) #melt.GetAreaList(guid,typ)
-    #alist=[makerow(_guid for _guid in agen)]
-    alist=[]
-    for el in agen:
-        #el=melt.fias_AO(_guid,parent=guid)
-        #el.kind=typ
+
+    alist = myself.subO(typ)
+    for el in alist:
         add_links(el)
-        alist.append(el)
+    alist.sort(key=lambda el: el.offname)
     return {'project':'fiosm',"list":alist, "myself":myself}

@@ -5,7 +5,7 @@ def main(global_config, **settings):
     """
     config = Configurator(settings=settings)
     config.add_static_view('static', 'static', cache_max_age=3600)
-    config.add_route('home', '/')
+    config.add_route('foundbase_', '/')
     config.add_route('foundbase','found')
     config.add_route('found','found/{guid}/{typ}')
     config.add_route('foundroot','found//{typ}')
