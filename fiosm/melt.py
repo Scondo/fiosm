@@ -230,13 +230,13 @@ class fias_AO(object):
                 return
             cur_=conn.cursor()
             if typ=='all_b':
-                if self.guid==None or self.kind==0:
+                if self.guid == None:
                     self._stat['all_b']=0
                 else:
                     cur_.execute("SELECT count(distinct(houseguid)) FROM fias_house WHERE aoguid=%s",(self.guid,))
                     self._stat['all_b']=cur_.fetchone()[0]
             elif typ=='found_b':
-                if self.stat('all_b')==0:
+                if self.stat('all_b') == 0 or self.kind == 0:
                     self._stat['found_b']=0
                 else:
                     cur_.execute("SELECT count(distinct(f.houseguid)) FROM fias_house f, "+prefix+bld_aso_tbl+" o WHERE f.aoguid=%s AND f.houseguid=o.aoguid",(self.guid,))
