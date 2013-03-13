@@ -225,8 +225,9 @@ class fias_AO(object):
 
         elif typ.endswith('_b'):
             #all building children are easily available from all_b
-            if (not force) and hasattr(self, '_subO') and 'all_b' in self._subO:
-                return len(self.subO(typ))
+            if (not force) and hasattr(self, '_subO') and ('all_b' in self._subO):
+                self._stat[typ] = len(self.subO(typ))
+                return
             cur_=conn.cursor()
             if typ=='all_b':
                 if self.guid==None or self.kind==0:
@@ -434,7 +435,7 @@ class fias_AONode(fias_AO):
         elif typ == 'street':
             kind = 1
             osmid = 'osm_way'
-            cur.execute('SELECT DISTINCT ON(f.aoguid) ' + fias_sel + ', a.' + osmid + ', o.name' + stat_sel + ' FROM fias_addr_obj f INNER JOIN ' + prefix + way_aso_tbl + ' a ON f.aoguid=a.aoguid INNER JOIN ' + prefix + ways_table + ' o ON a.' + osmid + '=o.osm_id ' + stat_join + ' WHERE parentguid' + cmpop + '%s', (self.guid,))
+            cur.execute('SELECT DISTINCT ON(f.aoguid) f.aoguid,' + fias_sel + ', a.' + osmid + ', o.name' + stat_sel + ' FROM fias_addr_obj f INNER JOIN ' + prefix + way_aso_tbl + ' a ON f.aoguid=a.aoguid INNER JOIN ' + prefix + ways_table + ' o ON a.' + osmid + '=o.osm_id ' + stat_join + ' WHERE parentguid' + cmpop + '%s', (self.guid,))
         elif typ == 'not found':
             kind = 0
             osmid = None
