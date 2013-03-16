@@ -1,23 +1,34 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" xmlns:tal="http://xml.zope.org/namespaces/tal">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"
+	xmlns:tal="http://xml.zope.org/namespaces/tal">
 <head>
-  <title>ФИАС + OSM = FIOSM</title>
-  <meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/>
-  <meta name="keywords" content="python web application" />
-  <meta name="description" content="pyramid web application" />
-  <link rel="icon" type="image/png" href="${request.static_url('fiosm:static/favicon.png')}" />
-  <style>
-  .childstat{width:90%}
-  </style>
+<title>ФИАС + OSM = FIOSM</title>
+<meta http-equiv="Content-Type" content="text/html;charset=UTF-8" />
+<meta name="keywords" content="python web application" />
+<meta name="description" content="pyramid web application" />
+<link rel="icon" type="image/png"
+	href="${request.static_url('fiosm:static/favicon.png')}" />
+<style>
+.childstat {
+	width: 90%
+}
+</style>
 </head>
 <body>
 	<table class="header" border="0">
-	<tr><td>${myself.name}</td><td>Выше:<a href="${myself.link['top']}">${myself.parent.name}</a></td>
-	</tr>
-	<tr><td><a href="${myself.link['details']}">Информация ФИАС</a></td></tr>
-	<tr><td width=50%>
-	<table class="mystat" cellspacing="1" border="1">
-<tr><th colspan="2">Статистика:</th></tr>
+		<tr>
+			<td>${myself.name}</td>
+			<td>Выше:<a href="${myself.link['top']}">${myself.parent.name}</a></td>
+		</tr>
+		<tr>
+			<td><a href="${myself.link['details']}">Информация ФИАС</a></td>
+		</tr>
+		<tr>
+			<td width=50%>
+				<table class="mystat" cellspacing="1" border="1">
+					<tr>
+						<th colspan="2">Статистика:</th>
+					</tr>
 					<tr>
 						<td>Всего адресных элементов</td>
 						<td><a href="${myself.link['all']}">${myself.stat('all')}</a></td>
@@ -48,26 +59,40 @@
 					</tr>
 				</table>
 			</td>
-	<td>
-	</td>
-	</tr>
+			<td></td>
+		</tr>
+	</table>
+	<table><tr><td><a href="${myself.link['prev']}">Предыдущие</a></td><td><a href="${myself.link['next']}">Следующие</a></td></tr>
 	</table>
 	<p></p>
 	<table class="childstat" border=1 cellspacing=0>
-			<thead><tr><th rowspan=2>Название</th><th colspan=4>Адресные элементы</th><th colspan=3>Дома</th></tr>
-			<tr><th>Всего</th><th>Терр.</th><th>Улиц</th><th>Нет</th><th>Всего</th><th>в ОСМ</th><th>Нет</th></tr>
-			</thead>
-			<tr tal:repeat="row list">
-				<td>${row.name}</td>
-				<td><a href="${row.link['all']}">${row.stat('all')}</a></td>
-				<td><a href="${row.link['found']}">${row.stat('found')}</a></td>
-				<td><a href="${row.link['street']}">${row.stat('street')}</a></td>
-				<td><a href="${row.link['not found']}">${row.stat('not found')}</a></td>
-
-				<td>${row.stat('all_b')}</td>
-				<td>${row.stat('found_b')}</td>
-				<td>${row.stat('not found_b')}</td>
+		<thead>
+			<tr>
+				<th rowspan=2>Название</th>
+				<th colspan=4>Адресные элементы</th>
+				<th colspan=3>Дома</th>
 			</tr>
-		</table>
+			<tr>
+				<th>Всего</th>
+				<th>Терр.</th>
+				<th>Улиц</th>
+				<th>Нет</th>
+				<th>Всего</th>
+				<th>в ОСМ</th>
+				<th>Нет</th>
+			</tr>
+		</thead>
+		<tr tal:repeat="row list">
+			<td>${row.name}</td>
+			<td><a href="${row.link['all']}">${row.stat('all')}</a></td>
+			<td><a href="${row.link['found']}">${row.stat('found')}</a></td>
+			<td><a href="${row.link['street']}">${row.stat('street')}</a></td>
+			<td><a href="${row.link['not found']}">${row.stat('not found')}</a></td>
+			<td>${row.stat('all_b')}</td>
+			<td>${row.stat('found_b')}</td>
+			<td>${row.stat('not found_b')}</td>
+		</tr>
+	</table>
+	
 </body>
 </html>
