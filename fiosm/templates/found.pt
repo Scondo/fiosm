@@ -62,7 +62,8 @@
 			<td></td>
 		</tr>
 	</table>
-	<table><tr><td><a href="${myself.link['prev']}">Предыдущие</a></td><td><a href="${myself.link['next']}">Следующие</a></td></tr>
+	<table tal:condition="myself.link['offlinks']">
+	<tr><td><a href="${myself.link['prev']}">Предыдущие</a></td><td><a href="${myself.link['next']}">Следующие</a></td></tr>
 	</table>
 	<p></p>
 	<table class="childstat" border=1 cellspacing=0>
