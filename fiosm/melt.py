@@ -29,28 +29,6 @@ typ_cond = {'all': '',
          }
 
 
-def GetAreaList(parentguid,typ,count=False):
-    cur_=conn.cursor()
-    if typ=='not found':
-        type_cond="NOT("+" OR ".join(filter(None,typ_cond.values()))+")"
-    elif typ_cond.has_key(typ):
-        type_cond=typ_cond[typ]
-#    else:
-#        return []
-    
-    if type_cond<>"":
-        type_cond=" AND "+type_cond
-    what='Count(aoguid)' if count else 'aoguid'
-    if parentguid=='' or (parentguid is None):
-        cur_.execute("SELECT "+what+" FROM fias_addr_obj f WHERE parentguid is Null"+type_cond)
-    else:
-        cur_.execute("SELECT "+what+" FROM fias_addr_obj f WHERE parentguid=%s"+type_cond,(parentguid,))
-    
-    res=cur_.fetchone()
-    while res:
-        yield res[0]
-        res=cur_.fetchone()
-
 def SaveAreaStat(guid,stat):
     if guid==None :
         return
@@ -221,7 +199,16 @@ class fias_AO(object):
             if ('all' in self._stat and self._stat['all']==0) or (self.kind==0 and typ=='found') or (self.kind<2 and typ=='street'):
                 self._stat[typ]=0
             else:
-                self._stat[typ]=GetAreaList(self.guid,typ,True).next()
+                cmpop = ' is ' if self.guid == None else ' = '
+                #make request
+                cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+                if typ == 'found':
+                    cur.execute('SELECT COUNT(f.aoguid) FROM fias_addr_obj f INNER JOIN ' + prefix + pl_aso_tbl + ' a ON f.aoguid=a.aoguid WHERE parentguid' + cmpop + '%s', (self.guid,))
+                elif typ == 'street':
+                    cur.execute('SELECT COUNT(DISTINCT f.aoguid) FROM fias_addr_obj f INNER JOIN ' + prefix + way_aso_tbl + ' a ON f.aoguid=a.aoguid WHERE parentguid' + cmpop + '%s', (self.guid,))
+                elif typ == 'all':
+                    cur.execute('SELECT COUNT(aoguid) FROM fias_addr_obj WHERE parentguid' + cmpop + '%s', (self.guid,))
+                self._stat[typ] = cur.fetchone()[0]
 
         elif typ.endswith('_b'):
             #all building children are easily available from all_b
@@ -245,11 +232,11 @@ class fias_AO(object):
         elif typ.endswith('_r'):
             res=self.stat(typ[:-2])
             for ao in self.subAO('found'):
-                res+=fias_AO(ao).stat(typ)
+                res += fias_AONode(ao).stat(typ)
             for ao in self.subAO('street'):
-                res+=fias_AO(ao).stat(typ[:-2])
+                res += ao.stat(typ[:-2])
             for ao in self.subAO('not found'):
-                res+=fias_AO(ao).stat(typ[:-2])
+                res += ao.stat(typ[:-2])
     
     def pullstat(self,row):
         '''Pull stat info from row of dictionary-like cursor'''
@@ -414,6 +401,9 @@ class fias_AONode(fias_AO):
         return self._subO[typ]
 
     def subAO(self, typ, need_stat=True):
+        if typ in self._subO:
+            return self._subO[typ]
+
         #Voids by kind
         if self.kind != 2 and typ != 'not found':
             return []

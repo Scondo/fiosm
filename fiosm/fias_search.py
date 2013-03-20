@@ -236,9 +236,9 @@ def AssociateO(elem):
     This function should work for elements with partitially associated subs 
     as well as elements without associated subs 
     '''
-    AssocBuild(elem)
     if not elem.kind:
         return
+    AssocBuild(elem)
     #run processing for found to parse their subs
     for sub in elem.subAO('found', False):
         AssociateO(melt.fias_AONode(sub))
@@ -257,7 +257,7 @@ def AssociateO(elem):
             AssociateO(sub_)
     #search for new elements
     subareas=Subareas(elem.osmid)
-    for sub in elem.subAO('not found', False):
+    for sub in tuple(elem.subAO('not found', False)):
         sub_ = melt.fias_AONode(sub)
         adm_id=None
         if subareas:
@@ -276,7 +276,6 @@ def AssociateO(elem):
             sub_.kind = 2
             AssociateO(sub_)
         else:
-            logging.debug("Searching street:"+repr(sub)+" in "+repr(elem.guid))
             streets=FindAssocStreet(sub_,elem.geom)
             if streets<>None:
                 melt.conn.autocommit=False
@@ -295,7 +294,9 @@ def AssociateO(elem):
 def AssORoot():
     '''Associate and process federal subject (they have no parent id and no parent geom)
     '''
-    for sub in melt.GetAreaList('','all'):
+    cur.execute("SELECT aoguid FROM fias_addr_obj f WHERE parentguid is Null")
+    fedobj = [it[0] for it in cur.fetchall()]
+    for sub in fedobj:
         child=melt.fias_AONode(sub)
         if not child.kind:
             adm_id=FindAssocPlace(child,None)
@@ -303,8 +304,7 @@ def AssORoot():
                 cur.execute("INSERT INTO "+prefix+pl_aso_tbl+" (aoguid,osm_admin) VALUES (%s, %s)",(sub,adm_id))
                 child=melt.fias_AONode(sub,2,adm_id)
         
-        if child.kind:    
-            AssociateO(child)
+        AssociateO(child)
         print child.name.encode('UTF-8') + str(child.kind)
         
 if __name__=="__main__":
