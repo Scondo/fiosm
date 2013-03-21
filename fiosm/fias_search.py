@@ -211,11 +211,15 @@ def FindAssocStreet(elem,pgeom):
             elem.name = name
             return checked
 
-def AssocBuild(elem):
+
+def AssocBuild(elem, point):
     '''Search and save building association for elem
     '''
-    cur.execute("""SELECT osm_id, "addr:housenumber" FROM """+prefix+poly_table+""" WHERE "addr:street"=%s AND ST_Within(way,%s)""",(elem.name,elem.geom))
-    osm_h=cur.fetchall()
+    if point:
+        cur.execute("""SELECT osm_id, "addr:housenumber" FROM """ + prefix + point_table + """ WHERE "addr:street"=%s AND ST_Within(way,%s)""", (elem.name, elem.geom))
+    else:
+        cur.execute("""SELECT osm_id, "addr:housenumber" FROM """ + prefix + poly_table + """ WHERE "addr:street"=%s AND ST_Within(way,%s)""", (elem.name, elem.geom))
+    osm_h = cur.fetchall()
     if not osm_h:
         return []
     found = []
@@ -225,7 +229,7 @@ def AssocBuild(elem):
                 found.append({'h_id': hid, 'guid': house.guid})
     melt.conn.autocommit=False
     for myrow in found:
-        cur.execute("INSERT INTO "+prefix+bld_aso_tbl+" (aoguid,osm_build,point) VALUES (%s, %s, 0)",(myrow['guid'],myrow['h_id']))
+        cur.execute("INSERT INTO " + prefix + bld_aso_tbl + " (aoguid,osm_build,point) VALUES (%s, %s, %s)", (myrow['guid'], myrow['h_id'], point))
     melt.conn.commit()
     melt.conn.autocommit=True
 
@@ -238,12 +242,13 @@ def AssociateO(elem):
     '''
     if not elem.kind:
         return
-    AssocBuild(elem)
+    AssocBuild(elem, 0)
+    AssocBuild(elem, 1)
     #run processing for found to parse their subs
-    for sub in elem.subAO('found', False):
+    for sub in tuple(elem.subAO('found', False)):
         AssociateO(melt.fias_AONode(sub))
     #find new elements for street if any
-    for sub in elem.subAO('street', False):
+    for sub in tuple(elem.subAO('street', False)):
         sub_ = melt.fias_AONode(sub)
         streets=FindAssocStreet(sub_,elem.geom)
         if streets<>None:
