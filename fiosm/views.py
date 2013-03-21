@@ -44,9 +44,9 @@ def found_view(request):
         raise HTTPBadRequest()
     add_links(myself)
     if myself.parent.guid:
-        myself.link['top']=request.route_url('found', guid=myself.parent.guid, typ='all')
+        myself.link['top'] = request.route_url('found0', guid=myself.parent.guid, typ='all')
     else:
-        myself.link['top']=''
+        myself.link['top'] = ''
 
     myself.link['details']=request.route_url('details', guid=myself.guid, kind='ao')
 
