@@ -190,6 +190,26 @@ def FindCandidates(pgeom,elem,tbl=prefix+poly_table,addcond=""):
     
     return (res,formal)
 
+
+def FindMangled(pgeom, elem, tbl=prefix + ways_table, addcond=""):
+    '''Get osm representation of elem using name from streetmangler
+    That items must lies within polygon pgeom (polygon of parent territory)
+
+    return (name, osmid)
+    '''
+    if melt.mangledb.usable:
+        mangl_n = melt.mangledb.db.CheckCanonicalForm(elem.shortname + " " + elem.formalname)
+        if not mangl_n:
+            return
+    else:
+        return
+    if pgeom == None:
+        cur.execute("SELECT name, osm_id FROM " + tbl + " WHERE lower(name) = lower(%s)" + addcond, (mangl_n,))
+    else:
+        cur.execute("SELECT name, osm_id FROM " + tbl + " WHERE lower(name) LIKE lower(%s) AND ST_Within(way,%s)" + addcond, (mangl_n, pgeom))
+    return cur.fetchone()
+
+
 def FindAssocPlace(elem,pgeom):
     (candidates,formal)=FindCandidates(pgeom,elem,prefix+poly_table," AND building ISNULL")
     if not candidates:
@@ -201,6 +221,10 @@ def FindAssocPlace(elem,pgeom):
             return checked[0]
 
 def FindAssocStreet(elem,pgeom):
+    mangled = FindMangled(pgeom, elem, prefix + ways_table, " AND highway NOTNULL")
+    if mangled:
+        elem.name = mangled[0]
+        return mangled[1]
     (candidates,formal)=FindCandidates(pgeom,elem,prefix+ways_table," AND highway NOTNULL")
     if not candidates:
         return None
