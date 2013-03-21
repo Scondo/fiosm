@@ -15,7 +15,7 @@ def details_view(request):
     except ValueError:
         raise HTTPBadRequest()
     myself=melt.fias_AONode(guid)
-    statlink=request.route_url('found', guid=guid, typ='all')
+    statlink = request.route_url('found0', guid=guid, typ='all')
     return {"fias":myself.fias,"statlink":statlink,"name":myself.name}
 
 
