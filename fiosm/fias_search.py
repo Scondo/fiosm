@@ -207,7 +207,7 @@ def FindMangled(pgeom, elem, tbl=prefix + ways_table, addcond=""):
         cur.execute("SELECT name, osm_id FROM " + tbl + " WHERE lower(name) = lower(%s)" + addcond, (mangl_n,))
     else:
         cur.execute("SELECT name, osm_id FROM " + tbl + " WHERE lower(name) LIKE lower(%s) AND ST_Within(way,%s)" + addcond, (mangl_n, pgeom))
-    return cur.fetchone()
+    return cur.fetchall()
 
 
 def FindAssocPlace(elem,pgeom):
@@ -224,7 +224,7 @@ def FindAssocStreet(elem,pgeom):
     mangled = FindMangled(pgeom, elem, prefix + ways_table, " AND highway NOTNULL")
     if mangled:
         elem.name = mangled[0]
-        return mangled[1]
+        return [it[1] for it in mangled]
     (candidates,formal)=FindCandidates(pgeom,elem,prefix+ways_table," AND highway NOTNULL")
     if not candidates:
         return None
