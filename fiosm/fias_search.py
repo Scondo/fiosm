@@ -248,7 +248,7 @@ def AssocBuild(elem, point):
         return []
     found = []
     for hid, number in osm_h:
-        for house in elem.subO('not found_b'):
+        for house in tuple(elem.subHO('not found_b')):
             if house.equal_to_str(number):
                 found.append({'h_id': hid, 'guid': house.guid})
     melt.conn.autocommit=False
