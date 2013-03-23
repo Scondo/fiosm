@@ -46,7 +46,7 @@ def found_view(request):
     if myself.parent.guid:
         myself.link['top'] = request.route_url('found0', guid=myself.parent.guid, typ='all')
     else:
-        myself.link['top'] = ''
+        myself.link['top'] = request.route_url('foundroot0', typ='all')
 
     myself.link['details']=request.route_url('details', guid=myself.guid, kind='ao')
 
