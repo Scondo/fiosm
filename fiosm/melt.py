@@ -29,16 +29,6 @@ typ_cond = {'all': '',
          }
 
 
-def SaveAreaStat(guid,stat):
-    if guid==None :
-        return
-    #psycopg2.extras.wait_select(stat_conn)
-    stat['guid']=guid
-    if ('all' in stat) and ('found' in stat) and ('street' in stat) and ('all_b' in stat) and ('found_b' in stat):
-        stat_cur.execute('DELETE FROM fiosm_stat WHERE aoguid=%s',(guid,))
-        stat_cur.execute('''INSERT INTO fiosm_stat (ao_all, found, street, all_b, found_b,aoguid) 
-        VALUES (%(all)s , %(found)s , %(street)s , %(all_b)s , %(found_b)s , %(guid)s) ''',stat)
-
 class fias_AO(object):
     def __init__(self,guid,kind=None,osmid=None,parent=None):
         if guid=="":
@@ -267,9 +257,34 @@ class fias_AO(object):
         #If still no stat - calculate
         if self._stat.get(typ) == None:
             self.CalcAreaStat(typ)
-            SaveAreaStat(self.guid, self._stat)
+            self.SaveAreaStat()
         return self._stat[typ]
 
+    def SaveAreaStat(self):
+        if self.guid == None:
+            return
+        stat = self._stat
+        stat['guid'] = self.guid
+        stat_cur.execute('SELECT * FROM fiosm_stat WHERE aoguid=%s', (self.guid,))
+        self._stat = {}
+        row = stat_cur.fetchone()
+        if row:
+            self.pullstat(row)
+        else:
+            stat_cur.execute('INSERT INTO fiosm_stat (aoguid) VALUES %s', (self.guid))
+
+        if ('all' in stat) and ('found' in stat) and ('street' in stat):
+            if stat['all'] != self._stat.get('all') or stat['found'] != self._stat.get('found') or stat['street'] != self._stat.get('street'):
+                stat_cur.execute('UPDATE fiosm_stat SET ao_all=%(all), found=%(found), street=%(street) WHERE aoguid = %(guid)s', stat)
+        if ('all_b' in stat) and ('found_b' in stat):
+            if stat['all_b'] != self._stat.get('all_b') or stat['found_b'] != self._stat.get('found_b'):
+                stat_cur.execute('UPDATE fiosm_stat SET all_b=%(all_b), found_b=%(found_b) WHERE aoguid = %(guid)s', stat)
+        if ('all_r' in stat) and ('found_r' in stat) and ('street_r' in stat):
+            if stat['all_r'] != self._stat.get('all_r') or stat['found_r'] != self._stat.get('found_r') or stat['street_r'] != self._stat.get('street_r'):
+                stat_cur.execute('UPDATE fiosm_stat SET all_r=%(all_r), found_r=%(found_r), street_r=%(street_r) WHERE aoguid = %(guid)s', stat)
+        if ('all_b_r' in stat) and ('found_b_r' in stat):
+            if stat['all_b_r'] != self._stat.get('all_b_r') or stat['found_b_r'] != self._stat.get('found_b_r'):
+                stat_cur.execute('UPDATE fiosm_stat SET all_b_r=%(all_b_r), found_b_r=%(found_b_r) WHERE aoguid = %(guid)s', stat)
 
     @property
     def name(self):
