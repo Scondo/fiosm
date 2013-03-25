@@ -305,6 +305,9 @@ class fias_AO(object):
             if stat['all_b_r'] != self._stat.get('all_b_r') or stat['found_b_r'] != self._stat.get('found_b_r'):
                 stat_cur.execute('UPDATE fiosm_stat SET all_b_r=%(all_b_r), found_b_r=%(found_b_r) WHERE aoguid = %(guid)s', stat)
 
+        del stat['guid']
+        self._stat = stat
+
     @property
     def name(self):
         '''Name of object as on map'''
