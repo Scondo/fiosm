@@ -316,8 +316,8 @@ def AssociateO(elem):
                 sub_.kind = 1
                 sub_.osmid = streets[0]
                 AssociateO(sub_)
-#    elem.stat('not found')
-#    elem.stat('not found_b')
+    elem.stat('not found_r')
+    elem.stat('not found_b_r')
 
 
 def AssORoot():
