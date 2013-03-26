@@ -290,7 +290,7 @@ class fias_AO(object):
         if row:
             self.pullstat(row)
         else:
-            stat_cur.execute('INSERT INTO fiosm_stat (aoguid) VALUES %s', (self.guid))
+            stat_cur.execute('INSERT INTO fiosm_stat (aoguid) VALUES %s', (self.guid,))
 
         if ('all' in stat) and ('found' in stat) and ('street' in stat):
             if stat['all'] != self._stat.get('all') or stat['found'] != self._stat.get('found') or stat['street'] != self._stat.get('street'):
