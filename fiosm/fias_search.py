@@ -14,6 +14,11 @@ def StatTableReCreate():
    street    integer,
    all_b     integer,
    found_b   integer,
+   all_r    integer,
+   found_r     integer,
+   street_r    integer,
+   all_b_r     integer,
+   found_b_r   integer,
    aoguid    uuid
 );""")
 
