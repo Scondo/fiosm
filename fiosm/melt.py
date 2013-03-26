@@ -227,6 +227,7 @@ class fias_AO(object):
                 res += ao.stat(typ[:-2])
             for ao in self.subAO('not found'):
                 res += ao.stat(typ[:-2])
+            self._stat[typ] = res
     
     def pullstat(self,row):
         '''Pull stat info from row of dictionary-like cursor'''
