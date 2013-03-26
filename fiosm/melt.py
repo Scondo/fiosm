@@ -294,16 +294,16 @@ class fias_AO(object):
 
         if ('all' in stat) and ('found' in stat) and ('street' in stat):
             if stat['all'] != self._stat.get('all') or stat['found'] != self._stat.get('found') or stat['street'] != self._stat.get('street'):
-                stat_cur.execute('UPDATE fiosm_stat SET ao_all=%(all), found=%(found), street=%(street) WHERE aoguid = %(guid)s', stat)
+                stat_cur.execute('UPDATE fiosm_stat SET ao_all=%(all)s, found=%(found)s, street=%(street)s WHERE aoguid = %(guid)s', stat)
         if ('all_b' in stat) and ('found_b' in stat):
             if stat['all_b'] != self._stat.get('all_b') or stat['found_b'] != self._stat.get('found_b'):
-                stat_cur.execute('UPDATE fiosm_stat SET all_b=%(all_b), found_b=%(found_b) WHERE aoguid = %(guid)s', stat)
+                stat_cur.execute('UPDATE fiosm_stat SET all_b=%(all_b)s, found_b=%(found_b)s WHERE aoguid = %(guid)s', stat)
         if ('all_r' in stat) and ('found_r' in stat) and ('street_r' in stat):
             if stat['all_r'] != self._stat.get('all_r') or stat['found_r'] != self._stat.get('found_r') or stat['street_r'] != self._stat.get('street_r'):
-                stat_cur.execute('UPDATE fiosm_stat SET all_r=%(all_r), found_r=%(found_r), street_r=%(street_r) WHERE aoguid = %(guid)s', stat)
+                stat_cur.execute('UPDATE fiosm_stat SET all_r=%(all_r)s, found_r=%(found_r)s, street_r=%(street_r)s WHERE aoguid = %(guid)s', stat)
         if ('all_b_r' in stat) and ('found_b_r' in stat):
             if stat['all_b_r'] != self._stat.get('all_b_r') or stat['found_b_r'] != self._stat.get('found_b_r'):
-                stat_cur.execute('UPDATE fiosm_stat SET all_b_r=%(all_b_r), found_b_r=%(found_b_r) WHERE aoguid = %(guid)s', stat)
+                stat_cur.execute('UPDATE fiosm_stat SET all_b_r=%(all_b_r)s, found_b_r=%(found_b_r)s WHERE aoguid = %(guid)s', stat)
 
         del stat['guid']
         self._stat = stat
