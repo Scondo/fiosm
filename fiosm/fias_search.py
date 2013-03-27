@@ -24,9 +24,9 @@ def StatTableReCreate():
 
 def AssocTableReCreate():
     cur.execute("DROP TABLE IF EXISTS "+prefix+pl_aso_tbl)
-    cur.execute("CREATE TABLE "+prefix+pl_aso_tbl+"(aoguid UUID,  osm_admin integer);")
+    cur.execute("CREATE TABLE "+prefix+pl_aso_tbl+"(aoguid UUID,  osm_admin bigint);")
     cur.execute("DROP TABLE IF EXISTS "+prefix+way_aso_tbl)
-    cur.execute("CREATE TABLE "+prefix+way_aso_tbl+"(aoguid UUID,  osm_way  integer);")
+    cur.execute("CREATE TABLE "+prefix+way_aso_tbl+"(aoguid UUID,  osm_way  bigint);")
 
 def AssocIdxCreate():
     cur.execute("CREATE INDEX "+prefix+pl_aso_tbl+"_aoguid_idx ON "+prefix+pl_aso_tbl+""" USING btree (aoguid);
@@ -36,7 +36,7 @@ CREATE INDEX """+prefix+way_aso_tbl+"_osm_way_idx ON "+prefix+way_aso_tbl+""" US
 
 def AssocBTableReCreate():
     cur.execute("DROP TABLE IF EXISTS "+prefix+bld_aso_tbl)
-    cur.execute("CREATE TABLE "+prefix+bld_aso_tbl+"(aoguid      UUID,  osm_build   integer, point smallint);")
+    cur.execute("CREATE TABLE "+prefix+bld_aso_tbl+"(aoguid      UUID,  osm_build   bigint, point smallint);")
 
 def AssocTriggersReCreate():
     cur.execute("""CREATE OR REPLACE FUNCTION on_del_poly () RETURNS trigger AS
