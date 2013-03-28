@@ -17,6 +17,9 @@ import mangledb
 from config import *
 conn=psycopg2.connect(connstr)
 conn.autocommit=True
+
+stat_conn = psycopg2.connect(connstr)
+stat_conn.autocommit = False
 stat_cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
 socr_cache={}
@@ -231,18 +234,15 @@ class fias_AO(object):
     
     def pullstat(self,row):
         '''Pull stat info from row of dictionary-like cursor'''
-        self._stat['all']=row.get('ao_all')
-        self._stat['found']=row.get('found')
-        self._stat['street']=row.get('street')
-        self._stat['all_b']=row.get('all_b')
-        self._stat['found_b']=row.get('found_b')
-        self._stat['all_r']=row.get('all_r')
-        self._stat['found_r']=row.get('found_r')
-        self._stat['street_r']=row.get('street_r')
-        self._stat['all_b_r']=row.get('all_b_r')
-        self._stat['found_b_r']=row.get('found_b_r')
-        
-        
+        self._stat = {}
+        for item in ('all', 'found', 'street', 'all_b', 'found_b'):
+            value = row.get(item if item != 'all' else 'ao_all')
+            if value != None:
+                self._stat[item] = value
+            value = row.get(item + '_r')
+            if value != None:
+                self._stat[item + '_r'] = value
+
     def stat(self,typ):
         '''Statistic of childs for item'''
         #Calculable values
@@ -286,12 +286,12 @@ class fias_AO(object):
         stat = self._stat
         stat['guid'] = self.guid
         stat_cur.execute('SELECT * FROM fiosm_stat WHERE aoguid=%s', (self.guid,))
-        self._stat = {}
         row = stat_cur.fetchone()
         if row:
             self.pullstat(row)
         else:
             stat_cur.execute('INSERT INTO fiosm_stat (aoguid) VALUES (%s)', (self.guid,))
+            self._stat = {}
 
         if ('all' in stat) and ('found' in stat) and ('street' in stat):
             if stat['all'] != self._stat.get('all') or stat['found'] != self._stat.get('found') or stat['street'] != self._stat.get('street'):
@@ -306,6 +306,7 @@ class fias_AO(object):
             if stat['all_b_r'] != self._stat.get('all_b_r') or stat['found_b_r'] != self._stat.get('found_b_r'):
                 stat_cur.execute('UPDATE fiosm_stat SET all_b_r=%(all_b_r)s, found_b_r=%(found_b_r)s WHERE aoguid = %(guid)s', stat)
 
+        stat_conn.commit()
         del stat['guid']
         self._stat = stat
 

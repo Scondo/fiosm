@@ -1,4 +1,4 @@
-connstr="dbname=osm user=osm host=192.168.56.101 password=osm"
+connstr="dbname=osm user=osm host=192.168.175.26 password=osm"
 
 prefix='planet_osm_'
 poly_table='polygon'
