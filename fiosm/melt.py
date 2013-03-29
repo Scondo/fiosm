@@ -313,26 +313,23 @@ class fias_AO(object):
     @property
     def name(self):
         '''Name of object as on map'''
-        if self.guid==None: 
+        if self.guid == None:
             return u"Россия"
-        if hasattr(self,'_name'):
-            return self._name
-        
-        if True:#hasattr(self,'_osmid'): #speedup on web interface
-            cur_=conn.cursor()
-            if self.kind==2:
-                cur_.execute('SELECT name FROM '+prefix+poly_table+'  WHERE osm_id=%s ',(self.osmid,))
-                name=cur_.fetchone()
-                if name:
-                    self._name=name[0]
-            if self.kind==1:
-                cur_.execute('SELECT name FROM '+prefix+ways_table+'  WHERE osm_id=%s ',(self.osmid,))
-                name=cur_.fetchone()
-                if name:
-                    self._name=name[0]
-        
-        if not hasattr(self,'_name'):
-            self._name=self.names().next()
+
+        if not hasattr(self, '_name'):
+            cur = conn.cursor()
+            if self.kind == 2:
+                cur.execute('SELECT name FROM ' + prefix + poly_table + '  WHERE osm_id=%s ', (self.osmid,))
+                name = cur.fetchone()
+            elif self.kind == 1:
+                cur.execute('SELECT name FROM ' + prefix + ways_table + '  WHERE osm_id=%s ', (self.osmid,))
+                name = cur.fetchone()
+            else:
+                name = None
+            if name:
+                self._name = name[0]
+            else:
+                self._name = self.names().next()
         return self._name
 
     @name.setter
