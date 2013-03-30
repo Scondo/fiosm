@@ -243,34 +243,25 @@ class fias_AO(object):
             if value != None:
                 self._stat[item + '_r'] = value
 
-    def stat(self,typ):
+    def stat(self, typ):
         '''Statistic of childs for item'''
         #Calculable values
-        if typ == 'all_found':
-            return self.stat('found') + self.stat('street')
-        if typ == 'all_high':
-            return 0.9 * self.stat('all')
-        if typ == 'all_low':
-            return 0.2 * self.stat('all')
-        if typ == 'not found':
-            return self.stat('all') - self.stat('all_found')
-        if typ == 'not found_b':
-            return self.stat('all_b') - self.stat('found_b')
-        #Same as above for recursive stat
-        if typ == 'all_found_r':
-            return self.stat('found_r') + self.stat('street_r')
-        if typ == 'all_high_r':
-            return 0.9 * self.stat('all_r')
-        if typ == 'all_low_r':
-            return 0.2 * self.stat('all_r')
-        if typ == 'not found_r':
-            return self.stat('all_r') - self.stat('all_found_r')
-        if typ == 'not found_b_r':
-            return self.stat('all_b_r') - self.stat('found_b_r')
-
+        (r, t0) = ('_r', typ[:-2]) if typ.endswith('_r') else ('', typ)
+        (b, t0) = ('_b', t0[:-2]) if t0.endswith('_b') else ('', t0)
+        if t0 == 'all_found':
+            return self.stat('found' + r) + self.stat('street' + r)
+        if t0 == 'all_high':
+            return 0.9 * self.stat('all' + b + r)
+        if t0 == 'all_low':
+            return 0.2 * self.stat('all' + b + r)
+        if t0 == 'not found':
+            return self.stat('all' + b + r) - (self.stat('found_b' + r) if b else self.stat('all_found' + r))
+        #There no streets or buildings in root
+        if self.guid == None and (typ == 'street' or typ.endswith('_b')):
+            return 0
         #Try to pull saved stat
         if not (typ in self._stat) and self.guid != None:
-            stat_cur.execute('SELECT ao_all, found, street, all_b, found_b FROM fiosm_stat WHERE aoguid=%s', (self.guid, ))
+            stat_cur.execute('SELECT * FROM fiosm_stat WHERE aoguid=%s', (self.guid, ))
             res = stat_cur.fetchone()
             if res != None:
                 self.pullstat(res)
