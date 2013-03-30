@@ -1,10 +1,10 @@
-﻿#!/usr/bin/python
+#!/usr/bin/python
 # -*- coding: UTF-8 -*-
 
-import melt, mangledb
+import melt
+import mangledb
+mangledb.InitMangle(False)
 from config import *
-import logging
-logging.basicConfig(filename='fiosm.log',level=logging.WARNING)
 cur=melt.conn.cursor()
 
 def StatTableReCreate():
@@ -211,7 +211,7 @@ def FindMangled(pgeom, elem, tbl=prefix + ways_table, addcond=""):
     if pgeom == None:
         cur.execute("SELECT name, osm_id FROM " + tbl + " WHERE lower(name) = lower(%s)" + addcond, (mangl_n,))
     else:
-        cur.execute("SELECT name, osm_id FROM " + tbl + " WHERE lower(name) LIKE lower(%s) AND ST_Within(way,%s)" + addcond, (mangl_n, pgeom))
+        cur.execute("SELECT name, osm_id FROM " + tbl + " WHERE lower(name) = lower(%s) AND ST_Within(way,%s)" + addcond, (mangl_n, pgeom))
     return cur.fetchall()
 
 
@@ -228,7 +228,7 @@ def FindAssocPlace(elem,pgeom):
 def FindAssocStreet(elem,pgeom):
     mangled = FindMangled(pgeom, elem, prefix + ways_table, " AND highway NOTNULL")
     if mangled:
-        elem.name = mangled[0]
+        elem.name = mangled[0][0]
         return [it[1] for it in mangled]
     (candidates,formal)=FindCandidates(pgeom,elem,prefix+ways_table," AND highway NOTNULL")
     if not candidates:
@@ -340,15 +340,34 @@ def AssORoot():
         
         AssociateO(child)
         print child.name.encode('UTF-8') + str(child.kind)
-        
+
+
+def AssORootM():
+    '''Associate and process federal subject (they have no parent id and no parent geom)
+    '''
+    from multiprocessing import Pool
+    pool = Pool()
+    results = []
+    cur.execute("SELECT aoguid FROM fias_addr_obj f WHERE parentguid is Null")
+    fedobj = [it[0] for it in cur.fetchall()]
+    for sub in fedobj:
+        child = melt.fias_AONode(sub)
+        if not child.kind:
+            adm_id = FindAssocPlace(child, None)
+            if not adm_id == None:
+                cur.execute("INSERT INTO " + prefix + pl_aso_tbl + " (aoguid,osm_admin) VALUES (%s, %s)", (sub, adm_id))
+                child = melt.fias_AONode(sub, 2, adm_id)
+        results.append(pool.apply_async(AssociateO, (child,)))
+
+    while results:
+        result = results.pop(0)
+        result.get()
+
+
 if __name__=="__main__":
     AssocTableReCreate()
     AssocBTableReCreate()
 #    AssocTriggersReCreate()
     StatTableReCreate()
-    mangledb.InitMangle(False)
-    try:
-        AssORoot()
-        AssocIdxCreate()
-    finally:
-        logging.shutdown()
+    AssORootM()
+    AssocIdxCreate()
