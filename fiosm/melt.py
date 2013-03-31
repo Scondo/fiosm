@@ -376,18 +376,22 @@ class fias_HO(object):
         # 0 - polygon
         # 1 - point
         self.osmid = None
+        self._str = None
+
+    @property
+    def onestr(self):
+        if self._str == None:
+            self._str = u''
+            if self.number:
+                self._str = self._str + self.number
+            if self.build:
+                self._str = self._str + u' к' + self.build
+            if self.struc:
+                self._str = self._str + u' с' + self.struc
+        return self._str
 
     def equal_to_str(self, guess):
-        if self.build == None and self.struc == None:
-            return bool(self.number == guess)
-        fias_number = u''
-        if self.number:
-            fias_number = fias_number + self.number
-        if self.build:
-            fias_number = fias_number + u' к' + self.build
-        if self.struc:
-            fias_number = fias_number + u' с' + self.struc
-        return bool(fias_number == guess)
+        return bool(self.onestr == guess)
 
 
 class fias_AONode(fias_AO):

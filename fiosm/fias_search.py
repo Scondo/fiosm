@@ -251,14 +251,18 @@ def AssocBuild(elem, point):
     osm_h = cur.fetchall()
     if not osm_h:
         return []
-    found = []
+    #Filtering of found is optimisation for updating and also remove POI with address
+    found_pre = set([h.onestr for h in elem.subHO('found_b')])
+    osm_h = filter(lambda it: it[1] not in found_pre, osm_h)
+    found = {}
     for hid, number in osm_h:
         for house in tuple(elem.subHO('not found_b')):
             if house.equal_to_str(number):
-                found.append({'h_id': hid, 'guid': house.guid})
+                found[hid] = house.guid
+                #found.append({'h_id': hid, 'guid': house.guid})
     melt.conn.autocommit=False
-    for myrow in found:
-        cur.execute("INSERT INTO " + prefix + bld_aso_tbl + " (aoguid,osm_build,point) VALUES (%s, %s, %s)", (myrow['guid'], myrow['h_id'], point))
+    for myrow in found.iteritems():
+        cur.execute("INSERT INTO " + prefix + bld_aso_tbl + " (aoguid,osm_build,point) VALUES (%s, %s, %s)", (myrow[1], myrow[0], point))
     melt.conn.commit()
     melt.conn.autocommit=True
 
