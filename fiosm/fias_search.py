@@ -329,21 +329,25 @@ def AssociateO(elem):
     elem.stat('not found_b_r')
 
 
+def AssocRegion(guid):
+    region = melt.fias_AONode(guid)
+    if not region.kind:
+        adm_id = FindAssocPlace(region, None)
+        if adm_id != None:
+            cur.execute("INSERT INTO " + prefix + pl_aso_tbl + " (aoguid,osm_admin) VALUES (%s, %s)", (guid, adm_id))
+            region = melt.fias_AONode(guid, 2, adm_id)
+
+    AssociateO(region)
+    print region.name.encode('UTF-8') + str(region.kind)
+
+
 def AssORoot():
     '''Associate and process federal subject (they have no parent id and no parent geom)
     '''
     cur.execute("SELECT aoguid FROM fias_addr_obj f WHERE parentguid is Null")
     fedobj = [it[0] for it in cur.fetchall()]
     for sub in fedobj:
-        child=melt.fias_AONode(sub)
-        if not child.kind:
-            adm_id=FindAssocPlace(child,None)
-            if not adm_id==None:
-                cur.execute("INSERT INTO "+prefix+pl_aso_tbl+" (aoguid,osm_admin) VALUES (%s, %s)",(sub,adm_id))
-                child=melt.fias_AONode(sub,2,adm_id)
-        
-        AssociateO(child)
-        print child.name.encode('UTF-8') + str(child.kind)
+        AssocRegion(sub)
 
 
 def AssORootM():
@@ -355,13 +359,7 @@ def AssORootM():
     cur.execute("SELECT aoguid FROM fias_addr_obj f WHERE parentguid is Null")
     fedobj = [it[0] for it in cur.fetchall()]
     for sub in fedobj:
-        child = melt.fias_AONode(sub)
-        if not child.kind:
-            adm_id = FindAssocPlace(child, None)
-            if not adm_id == None:
-                cur.execute("INSERT INTO " + prefix + pl_aso_tbl + " (aoguid,osm_admin) VALUES (%s, %s)", (sub, adm_id))
-                child = melt.fias_AONode(sub, 2, adm_id)
-        results.append(pool.apply_async(AssociateO, (child,)))
+        results.append(pool.apply_async(AssocRegion, (sub,)))
 
     while results:
         result = results.pop(0)
