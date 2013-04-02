@@ -33,17 +33,38 @@ typ_cond = {'all': '',
 
 
 class fias_AO(object):
-    def __init__(self,guid,kind=None,osmid=None,parent=None):
+    def __init__(self, guid=None, kind=None, osmid=None, parent=None):
         if guid=="":
             guid=None
-        self.guid=guid
+        self._guid = guid
         self.setkind(kind)
         if osmid:
             self._osmid=osmid
         if parent:
             self._parent=parent
         self._stat={}
-    
+
+    def getguid(self):
+        if not self._osmkind or self._osmid == None:
+            return
+        cur = conn.cursor()
+        if self._osmkind == 2:
+            #'found'
+            cur.execute('SELECT aoguid FROM ' + prefix + pl_aso_tbl + ' WHERE osm_admin=%s', (self._osmid,))
+        elif self._osmkind == 1:
+            cur.execute('SELECT aoguid FROM ' + prefix + way_aso_tbl + ' WHERE aoguid=%s', (self._osmid,))
+        else:
+            return
+        cid = cur.fetchone()
+        if cid:
+            self._guid = cid[0]
+
+    @property
+    def guid(self):
+        if self._guid == None:
+            self.getguid()
+        return self._guid
+
     def calkind(self):
         cur=conn.cursor()
         #'found'
@@ -363,8 +384,14 @@ class fias_AO(object):
 
 
 class fias_HO(object):
-    def __init__(self, guid):
-        self.guid = guid
+    def __init__(self, guid=None, osmid=None, osmkind=None):
+        self._guid = guid
+        self._osmid = osmid
+        self._osmkind = osmkind
+        if guid == None and (osmid == None or osmkind == None):
+            raise AssertionError()
+        self._fias = {}
+
         self.parentguid = None
 
         self.number = None
@@ -372,11 +399,64 @@ class fias_HO(object):
         self.struc = None
         self.strtype = None
 
-        self.osmkind = None
-        # 0 - polygon
-        # 1 - point
-        self.osmid = None
         self._str = None
+
+    def getguid(self):
+        if self._osmid == None or self._osmkind == None:
+            return
+        cur = conn.cursor()
+        cur.execute("SELECT aoguid FROM " + prefix + bld_aso_tbl + " WHERE osm_build=%s AND point=%s " (self._osmid, self._osmkind))
+        res = cur.fetchone()
+        if res:
+            self._guid = res[0]
+
+    @property
+    def guid(self):
+        if self._guid == None:
+            self.getguid()
+        return self._guid
+
+    def getosm(self):
+        if self._guid == None:
+            return
+        cur = conn.cursor()
+        cur.execute("SELECT osm_build, point FROM " + prefix + bld_aso_tbl + " WHERE aoguid=%s" (self._guid,))
+        res = cur.fetchone()
+        if res:
+            self._osmid = res[0]
+            self._osmkind = res[1]
+
+    @property
+    def osmid(self):
+        if self._osmid == None:
+            self.getosm()
+        return self._osmid
+
+    @property
+    def osmkind(self):
+        if self._osmkind == None:
+            self.getosm()
+        return self._osmkind
+
+    def getfias(self):
+        if self.guid == None:
+            return
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute("SELECT * FROM fias_house WHERE houseguid=%s" (self.guid,))
+        res = cur.fethone()
+        if res:
+            self._fias['parentguid'] = res['aoguid']
+            self._fias['build'] = res['buildnum']
+            self._fias['number'] = res['housenum']
+            self._fias['struc'] = res['strucnum']
+
+    def __getattr__(self, name):
+        if name in ('parentguid', 'build', 'number', 'struc'):
+            if name not in self._fias:
+                self.getfias()
+            self._fias.get(name)
+        else:
+            raise AttributeError
 
     @property
     def onestr(self):
@@ -422,9 +502,7 @@ class fias_AONode(fias_AO):
         cur.execute("SELECT o.osm_build, o.point, f.* FROM fias_house f LEFT JOIN " + prefix + bld_aso_tbl + " o ON f.houseguid=o.aoguid WHERE f.aoguid=%s " + t_cond, (self.guid,))
         self._subO[typ] = []
         for row in cur.fetchall():
-            el = fias_HO(row['houseguid'])
-            el.osmid = row['osm_build']
-            el.osmkind = row['point']
+            el = fias_HO(row['houseguid'], row[0], row[1])
             el.build = row['buildnum']
             el.number = row['housenum']
             el.struc = row['strucnum']
