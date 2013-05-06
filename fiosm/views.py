@@ -1,5 +1,5 @@
 from pyramid.view import view_config
-from pyramid.httpexceptions import HTTPBadRequest
+from pyramid.httpexceptions import HTTPBadRequest, HTTPNotFound
 
 import melt
 import uuid
@@ -7,7 +7,6 @@ import uuid
 
 @view_config(route_name='details', renderer='templates/details.pt')
 def details_view(request):
-    
     guid=request.matchdict["guid"]
     #Make check for malformed guid!!!
     try:
@@ -21,50 +20,50 @@ def details_view(request):
 
 @view_config(route_name='found', renderer='templates/found.pt')
 def found_view(request):
-    def add_links(elem):
-        elem.link={}
-        for typ_ in ('all','found','street','not found'):#fiosm.typ_cond.keys():
-            elem.link[typ_] = request.route_url('found0', guid=elem.guid, typ=typ_)
-
-    guid=request.matchdict["guid"]
-    typ=request.matchdict['typ']
-    if not melt.typ_cond.has_key(typ):
+    guid = request.matchdict["guid"]
+    typ = request.matchdict["typ"]
+    if typ not in ('all', 'found', 'street', 'not found'):
         raise HTTPBadRequest()
-    #Make check for malformed guid
-    try:
-        guid=uuid.UUID(guid)
-    except ValueError:
-        if not guid:
-            guid=None
-        else:
+    if not guid:
+        #root is ok
+        guid = None
+    else:
+        #Make check for malformed guid
+        try:
+            guid = uuid.UUID(guid)
+        except ValueError:
             raise HTTPBadRequest()
     #Make check for area exist
-    myself=melt.fias_AONode(guid)
-    if not myself.isok:
-        raise HTTPBadRequest()
-    add_links(myself)
-    if myself.parent.guid:
-        myself.link['top'] = request.route_url('found0', guid=myself.parent.guid, typ='all')
-    else:
-        myself.link['top'] = request.route_url('foundroot0', typ='all')
-
-    myself.link['details']=request.route_url('details', guid=myself.guid, kind='ao')
+    myself = melt.fias_AONode(guid)
+    if guid and not myself.isok:
+        raise HTTPNotFound()
 
     alist = myself.subO(typ)
     alist.sort(key=lambda el: el.offname)
 
     if request.matchdict["offset"] or len(alist) > 150:
         offset = int(request.matchdict['offset'])
-        myself.link["offlinks"] = True
-        myself.link["prev"] = request.route_url('found', guid=guid, typ=typ, offset=max(0, offset - 100))
-        myself.link["next"] = request.route_url('found', guid=guid, typ=typ, offset=min(len(alist) - 1, offset + 100))
+        myself.offlinks = True
         alist = alist[offset:offset + 100]
     else:
-        myself.link["offlinks"] = False
+        myself.offlinks = False
 
-    for el in alist:
-        add_links(el)
-    return {"list": alist, "myself": myself}
+    def links(self, typ_l):
+        if typ_l in ('all', 'found', 'street', 'not found'):
+            return request.route_url('found0', guid=self.guid, typ=typ_l)
+        elif typ_l == 'details':
+            return request.route_url('details', guid=self.guid, kind='ao')
+        elif typ_l == 'top':
+            if self.parent.guid:
+                return request.route_url('found0', guid=self.parent.guid, typ='all')
+            else:
+                return request.route_url('foundroot0', typ='all')
+        elif typ_l == "prev":
+            return request.route_url('found', guid=self.guid, typ=typ, offset=max(0, offset - 100))
+        elif typ_l == "next":
+            return request.route_url('found', guid=self.guid, typ=typ, offset=min(self.stat(typ) - 1, offset + 100))
+
+    return {"list": alist, "myself": myself, "links": links}
 
 
 #Some defaults

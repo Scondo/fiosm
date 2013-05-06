@@ -12,16 +12,19 @@
 .childstat {
 	width: 90%
 }
+.meter{ 
+    width: 100% 
+}
 </style>
 </head>
 <body>
 	<table class="header" border="0">
 		<tr>
 			<td>${myself.name}</td>
-			<td>Выше:<a href="${myself.link['top']}">${myself.parent.name}</a></td>
+			<td>Выше:<a href="${links(myself,'top')}">${myself.parent.name}</a></td>
 		</tr>
-		<tr>
-			<td><a href="${myself.link['details']}">Информация ФИАС</a></td>
+		<tr tal:condition="myself.guid">
+			<td><a href="${links(myself,'details')}">Информация ФИАС</a></td>
 		</tr>
 		<tr>
 			<td width=50%>
@@ -31,19 +34,19 @@
 					</tr>
 					<tr>
 						<td>Всего адресных элементов</td>
-						<td><a href="${myself.link['all']}">${myself.stat('all')}</a></td>
+						<td><a href="${links(myself,'all')}">${myself.stat('all')}</a></td>
 					</tr>
 					<tr>
 						<td>Найдено территорий</td>
-						<td><a href="${myself.link['found']}">${myself.stat('found')}</a></td>
+						<td><a href="${links(myself,'found')}">${myself.stat('found')}</a></td>
 					</tr>
 					<tr>
 						<td>Найдено улиц</td>
-						<td><a href="${myself.link['street']}">${myself.stat('street')}</a></td>
+						<td><a href="${links(myself,'street')}">${myself.stat('street')}</a></td>
 					</tr>
 					<tr>
 						<td>Не найдено</td>
-						<td><a href="${myself.link['not found']}">${myself.stat('not found')}</a></td>
+						<td><a href="${links(myself,'not found')}">${myself.stat('not found')}</a></td>
 					</tr>
 					<tr>
 						<td>Всего домов</td>
@@ -62,36 +65,26 @@
 			<td></td>
 		</tr>
 	</table>
-	<table tal:condition="myself.link['offlinks']">
-	<tr><td><a href="${myself.link['prev']}">Предыдущие</a></td><td><a href="${myself.link['next']}">Следующие</a></td></tr>
+	<table tal:condition="myself.offlinks">
+	<tr><td><a href="${links(myself,'prev')}">Предыдущие</a></td><td><a href="${links(myself,'next')}">Следующие</a></td></tr>
 	</table>
 	<p></p>
 	<table class="childstat" border=1 cellspacing=0>
 		<thead>
 			<tr>
-				<th rowspan=2>Название</th>
-				<th colspan=4>Адресные элементы</th>
-				<th colspan=3>Дома</th>
-			</tr>
-			<tr>
-				<th>Всего</th>
-				<th>Терр.</th>
-				<th>Улиц</th>
-				<th>Нет</th>
-				<th>Всего</th>
-				<th>в ОСМ</th>
-				<th>Нет</th>
+				<th>Название</th>
+				<th>Адресные элементы</th>
+				<th>Дома</th>
 			</tr>
 		</thead>
 		<tr tal:repeat="row list">
-			<td>${row.name}</td>
-			<td><a href="${row.link['all']}">${row.stat('all')}</a></td>
-			<td><a href="${row.link['found']}">${row.stat('found')}</a></td>
-			<td><a href="${row.link['street']}">${row.stat('street')}</a></td>
-			<td><a href="${row.link['not found']}">${row.stat('not found')}</a></td>
-			<td>${row.stat('all_b')}</td>
-			<td>${row.stat('found_b')}</td>
-			<td>${row.stat('not found_b')}</td>
+			<td><a href="${links(row,'all')}">${row.name}</a></td>
+			<td><meter class="meter" value="${row.stat('all_found')}" optimum="${row.stat('all')}"
+			max="${row.stat('all')}" low="${row.stat('all_low')}" high="${row.stat('all_high')}" 
+			title="${row.stat('all_found')}/${row.stat('all')}">${row.stat('all_found')}/${row.stat('all')}</meter></td>
+			<td><meter class="meter" value="${row.stat('found_b')}" optimum="${row.stat('all_b')}"
+			max="${row.stat('all_b')}" low="${row.stat('all_low_b')}" high="${row.stat('all_high_b')}" 
+			title="${row.stat('found_b')}/${row.stat('all_b')}">${row.stat('found_b')}/${row.stat('all_b')}</meter></td>
 		</tr>
 	</table>
 	
