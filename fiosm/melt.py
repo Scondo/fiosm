@@ -1,9 +1,6 @@
 #!/usr/bin/python
 # -*- coding: UTF-8 -*-
 from __future__ import division
-
-from copy import copy
-import logging
 import psycopg2
 import ppygis
 import psycopg2.extras
@@ -12,6 +9,7 @@ psycopg2.extras.register_uuid()
 import psycopg2.extensions
 psycopg2.extensions.register_type(psycopg2.extensions.UNICODE)
 psycopg2.extensions.register_type(psycopg2.extensions.UNICODEARRAY)
+
 
 import mangledb
 from config import *
@@ -34,15 +32,15 @@ typ_cond = {'all': '',
 
 class fias_AO(object):
     def __init__(self, guid=None, kind=None, osmid=None, parent=None):
-        if guid=="":
-            guid=None
+        if not guid:
+            guid = None
         self._guid = guid
+        self._osmkind = None
         self.setkind(kind)
-        if osmid:
-            self._osmid=osmid
-        if parent:
-            self._parent=parent
+        self._osmid = osmid
+        self._parent = parent
         self._stat={}
+        self._fias = None
 
     def getguid(self):
         if not self._osmkind or self._osmid == None:
@@ -82,13 +80,12 @@ class fias_AO(object):
             self._kind=1
         else:
             self._kind=0
-        return self._kind
-    
+
     def getkind(self):
         if self.guid==None:
             return 2    
-        if not hasattr(self,'_kind') or self._kind==None:
-            return self.calkind()
+        if self._kind == None:
+            self.calkind()
         return self._kind
     
     def setkind(self,kind):
@@ -105,8 +102,8 @@ class fias_AO(object):
             self._kind=kind
             
     def delkind(self):
-        del self._kind
-        
+        self._kind = None
+
     kind=property(getkind,setkind,delkind,'''Basic type of object
         0-not found
         1-street
@@ -132,16 +129,15 @@ class fias_AO(object):
             self._formalname=firow[7]
             self._shortname=firow[8]
             self._aolevel=firow[9]
-            self._is=True
         else:
-            self._is=False
-        
+            self._fias = None
+
     @property
     def fias(self):
-        if not hasattr(self,'_fias'):
+        if self._fias == None:
             self.getFiasData()
         return self._fias
-    
+
     @property
     def offname(self):
         if not hasattr(self,'_offname'):
@@ -159,20 +155,21 @@ class fias_AO(object):
         if not hasattr(self,'_shortname'):
             self.getFiasData()
         return self._shortname
-    
+
     @property
     def fullname(self):
         key=u"#".join((self._shortname,str(self._aolevel)))
-        if key in socr_cache:
-            return socr_cache[key]
-        cur_=conn.cursor()
-        cur_.execute("""SELECT lower(socrname) FROM fias_socr_obj s
-        WHERE scname=%s AND level=%s """,(self._shortname,self._aolevel))
-        res=cur_.fetchone()
-        if res:
-            socr_cache[key]=res[0]
-            return res[0]
-        
+        if key not in socr_cache:
+            cur = conn.cursor()
+            cur.execute("""SELECT lower(socrname) FROM fias_socr_obj s
+            WHERE scname=%s AND level=%s """, (self._shortname, self._aolevel))
+            res = cur.fetchone()
+            if res:
+                socr_cache[key] = res[0]
+            else:
+                socr_cache[key] = ""
+        return socr_cache[key]
+
     def names(self,formal=True):
         name_=self.formalname if formal else self.offname
         if mangledb.usable and self.kind!=2:
@@ -189,24 +186,18 @@ class fias_AO(object):
     @property
     def parent(self):
         if not hasattr(self,'_parentO'):
-            if not hasattr(self,'_parent'):
+            if self._parent == None:
                 self.getFiasData()
-            #if self._parent==None:
-            #    return self
             self._parentO=fias_AO(self._parent)
         return self._parentO
-    
+
     @property
     def isok(self):
-        if self.guid==None:
-            return True 
-        if not hasattr(self,'_is'):
-            self.getFiasData()
-        return self._is
+        return (self.fias != None) or (self.guid == None)
 
-    def CalcAreaStat(self, typ, force=False):
+    def CalcAreaStat(self, typ):
         #check in pulled children
-        if not force and hasattr(self, '_subO') and typ in self._subO:
+        if hasattr(self, '_subO') and typ in self._subO:
                 self._stat[typ] = len(self._subO[typ])
 
         if typ in ('all','found','street'):
@@ -226,7 +217,7 @@ class fias_AO(object):
 
         elif typ.endswith('_b'):
             #all building children are easily available from all_b
-            if (not force) and hasattr(self, '_subO') and ('all_b' in self._subO):
+            if hasattr(self, '_subO') and ('all_b' in self._subO):
                 self._stat[typ] = len(self.subO(typ))
                 return
             cur_=conn.cursor()
@@ -243,19 +234,27 @@ class fias_AO(object):
                     cur_.execute("SELECT count(distinct(f.houseguid)) FROM fias_house f, "+prefix+bld_aso_tbl+" o WHERE f.aoguid=%s AND f.houseguid=o.aoguid",(self.guid,))
                     self._stat['found_b']=cur_.fetchone()[0]
 
-        elif typ.endswith('_r'):
-            res=self.stat(typ[:-2])
-            for ao in self.subAO('found'):
-                res += fias_AONode(ao).stat(typ)
-            for ao in self.subAO('street'):
-                res += ao.stat(typ[:-2])
-            for ao in self.subAO('not found'):
-                res += ao.stat(typ[:-2])
-            self._stat[typ] = res
-    
-    def pullstat(self,row):
+    def CalcRecStat(self, typ, savemode=1):
+        res = self.stat(typ[:-2])
+        for ao in self.subAO('found'):
+            res += fias_AONode(ao).stat(typ, savemode)
+        for ao in self.subAO('street'):
+            res += ao.stat(typ[:-2])
+        for ao in self.subAO('not found'):
+            res += fias_AONode(ao).stat(typ, savemode)
+        self._stat[typ] = res
+
+    def pullstat(self, row=None):
         '''Pull stat info from row of dictionary-like cursor'''
-        self._stat = {}
+        #self._stat = {}
+        if row == None:
+            if self.guid == None:
+                return
+            stat_cur.execute('SELECT * FROM fiosm_stat WHERE aoguid=%s', (self.guid, ))
+            row = stat_cur.fetchone()
+            if row == None:
+                return
+
         for item in ('all', 'found', 'street', 'all_b', 'found_b'):
             value = row.get(item if item != 'all' else 'ao_all')
             if value != None:
@@ -264,7 +263,7 @@ class fias_AO(object):
             if value != None:
                 self._stat[item + '_r'] = value
 
-    def stat(self, typ):
+    def stat(self, typ, savemode=1):
         '''Statistic of childs for item'''
         #Calculable values
         (r, t0) = ('_r', typ[:-2]) if typ.endswith('_r') else ('', typ)
@@ -276,27 +275,37 @@ class fias_AO(object):
         if t0 == 'all_low':
             return 0.2 * self.stat('all' + b + r)
         if t0 == 'not found':
+            if r and ('all' + b not in self._stat):
+                self.CalcRecStat(typ, savemode)
             return self.stat('all' + b + r) - (self.stat('found_b' + r) if b else self.stat('all_found' + r))
         #There no streets or buildings in root
         if self.guid == None and (typ == 'street' or typ.endswith('_b')):
             return 0
         #Try to pull saved stat
         if not (typ in self._stat) and self.guid != None:
-            stat_cur.execute('SELECT * FROM fiosm_stat WHERE aoguid=%s', (self.guid, ))
-            res = stat_cur.fetchone()
-            if res != None:
-                self.pullstat(res)
+            self.pullstat()
         #If still no stat - calculate
         if self._stat.get(typ) == None:
-            self.CalcAreaStat(typ)
-            self.SaveAreaStat()
+            if r:
+                self.CalcRecStat(typ, savemode)
+            else:
+                self.CalcAreaStat(typ)
+            self.SaveAreaStat(savemode)
         return self._stat[typ]
 
-    def SaveAreaStat(self):
+    def SaveAreaStat(self, mode=1):
+        '''Save statistic to DB
+        mode - 0 if have any slice, 1 - if have all not recursive, 2 - if have all
+        '''
         if self.guid == None:
             return
         stat = self._stat
         stat['guid'] = self.guid
+        a = ('all' in stat) and ('found' in stat) and ('street' in stat)
+        b = ('all_b' in stat) and ('found_b' in stat)
+        ar = ('all_r' in stat) and ('found_r' in stat) and ('street_r' in stat)
+        br = ('all_b_r' in stat) and ('found_b_r' in stat)
+        f = mode == 2 and a and b and ar and br
         stat_cur.execute('SELECT * FROM fiosm_stat WHERE aoguid=%s', (self.guid,))
         row = stat_cur.fetchone()
         if row:
@@ -305,16 +314,18 @@ class fias_AO(object):
             stat_cur.execute('INSERT INTO fiosm_stat (aoguid) VALUES (%s)', (self.guid,))
             self._stat = {}
 
-        if ('all' in stat) and ('found' in stat) and ('street' in stat):
+        if (mode == 0 and a) or (mode == 1 and a and b) or f:
             if stat['all'] != self._stat.get('all') or stat['found'] != self._stat.get('found') or stat['street'] != self._stat.get('street'):
                 stat_cur.execute('UPDATE fiosm_stat SET ao_all=%(all)s, found=%(found)s, street=%(street)s WHERE aoguid = %(guid)s', stat)
-        if ('all_b' in stat) and ('found_b' in stat):
+        if (mode == 0 and b) or (mode == 1 and a and b) or f:
             if stat['all_b'] != self._stat.get('all_b') or stat['found_b'] != self._stat.get('found_b'):
                 stat_cur.execute('UPDATE fiosm_stat SET all_b=%(all_b)s, found_b=%(found_b)s WHERE aoguid = %(guid)s', stat)
-        if ('all_r' in stat) and ('found_r' in stat) and ('street_r' in stat):
+
+        if (mode == 0 and ar) or (mode == 1 and ar and br) or f:
             if stat['all_r'] != self._stat.get('all_r') or stat['found_r'] != self._stat.get('found_r') or stat['street_r'] != self._stat.get('street_r'):
                 stat_cur.execute('UPDATE fiosm_stat SET all_r=%(all_r)s, found_r=%(found_r)s, street_r=%(street_r)s WHERE aoguid = %(guid)s', stat)
-        if ('all_b_r' in stat) and ('found_b_r' in stat):
+
+        if (mode == 0 and br) or (mode == 1 and ar and br) or f:
             if stat['all_b_r'] != self._stat.get('all_b_r') or stat['found_b_r'] != self._stat.get('found_b_r'):
                 stat_cur.execute('UPDATE fiosm_stat SET all_b_r=%(all_b_r)s, found_b_r=%(found_b_r)s WHERE aoguid = %(guid)s', stat)
 
@@ -350,14 +361,12 @@ class fias_AO(object):
 
     @property
     def osmid(self):
-        if not hasattr(self,'_osmid'):
-            if hasattr(self,'_kind') and not self._kind:
+        if self._osmid == None:
+            if self._kind == 0:
                 return None
             #Do not even try if not found
-            if not self.calkind():
-                return None
-            #and if we have kind other than 'not found' then we 
-            #receive osmid while we calculate
+            self.calkind()
+            #If kind other than 'not found' then we receive osmid
         return self._osmid
 
     @osmid.setter
