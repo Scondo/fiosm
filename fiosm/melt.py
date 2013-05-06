@@ -9,7 +9,7 @@ psycopg2.extras.register_uuid()
 import psycopg2.extensions
 psycopg2.extensions.register_type(psycopg2.extensions.UNICODE)
 psycopg2.extensions.register_type(psycopg2.extensions.UNICODEARRAY)
-
+import copy
 
 import mangledb
 from config import *
@@ -299,20 +299,23 @@ class fias_AO(object):
         '''
         if self.guid == None:
             return
-        stat = self._stat
+        stat = copy.copy(self._stat)
         stat['guid'] = self.guid
         a = ('all' in stat) and ('found' in stat) and ('street' in stat)
         b = ('all_b' in stat) and ('found_b' in stat)
         ar = ('all_r' in stat) and ('found_r' in stat) and ('street_r' in stat)
         br = ('all_b_r' in stat) and ('found_b_r' in stat)
         f = mode == 2 and a and b and ar and br
+        self._stat = {}
+
         stat_cur.execute('SELECT * FROM fiosm_stat WHERE aoguid=%s', (self.guid,))
         row = stat_cur.fetchone()
         if row:
             self.pullstat(row)
-        else:
+        elif a or b or ar or br:
             stat_cur.execute('INSERT INTO fiosm_stat (aoguid) VALUES (%s)', (self.guid,))
-            self._stat = {}
+        else:
+            return
 
         if (mode == 0 and a) or (mode == 1 and a and b) or f:
             if stat['all'] != self._stat.get('all') or stat['found'] != self._stat.get('found') or stat['street'] != self._stat.get('street'):
