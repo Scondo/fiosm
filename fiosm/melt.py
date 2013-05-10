@@ -10,6 +10,7 @@ import psycopg2.extensions
 psycopg2.extensions.register_type(psycopg2.extensions.UNICODE)
 psycopg2.extensions.register_type(psycopg2.extensions.UNICODEARRAY)
 import copy
+import logging
 
 import mangledb
 from config import *
@@ -181,8 +182,8 @@ class fias_AO(object):
         #As AMDmi3 promises
         #yield self.shortname+" "+name_
         #yield name_+" "+self.shortname
-        yield name_  
- 
+        yield name_
+
     @property
     def parent(self):
         if not hasattr(self,'_parentO'):
@@ -199,14 +200,13 @@ class fias_AO(object):
         #check in pulled children
         if hasattr(self, '_subO') and typ in self._subO:
                 self._stat[typ] = len(self._subO[typ])
-
+        cur = conn.cursor()
         if typ in ('all','found','street'):
             if ('all' in self._stat and self._stat['all']==0) or (self.kind==0 and typ=='found') or (self.kind<2 and typ=='street'):
                 self._stat[typ]=0
             else:
                 cmpop = ' is ' if self.guid == None else ' = '
                 #make request
-                cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
                 if typ == 'found':
                     cur.execute('SELECT COUNT(f.aoguid) FROM fias_addr_obj f INNER JOIN ' + prefix + pl_aso_tbl + ' a ON f.aoguid=a.aoguid WHERE parentguid' + cmpop + '%s', (self.guid,))
                 elif typ == 'street':
@@ -216,23 +216,23 @@ class fias_AO(object):
                 self._stat[typ] = cur.fetchone()[0]
 
         elif typ.endswith('_b'):
+            #no buildings in country
+            if self.guid == None:
+                self._stat[typ] = 0
+                return
             #all building children are easily available from all_b
             if hasattr(self, '_subO') and ('all_b' in self._subO):
                 self._stat[typ] = len(self.subO(typ))
                 return
-            cur_=conn.cursor()
             if typ=='all_b':
-                if self.guid == None:
-                    self._stat['all_b']=0
-                else:
-                    cur_.execute("SELECT count(distinct(houseguid)) FROM fias_house WHERE aoguid=%s",(self.guid,))
-                    self._stat['all_b']=cur_.fetchone()[0]
+                cur.execute("SELECT count(distinct(houseguid)) FROM fias_house WHERE aoguid=%s", (self.guid,))
+                self._stat['all_b'] = cur.fetchone()[0]
             elif typ=='found_b':
                 if self.stat('all_b') == 0 or self.kind == 0:
                     self._stat['found_b']=0
                 else:
-                    cur_.execute("SELECT count(distinct(f.houseguid)) FROM fias_house f, "+prefix+bld_aso_tbl+" o WHERE f.aoguid=%s AND f.houseguid=o.aoguid",(self.guid,))
-                    self._stat['found_b']=cur_.fetchone()[0]
+                    cur.execute("SELECT count(distinct(f.houseguid)) FROM fias_house f, " + prefix + bld_aso_tbl + " o WHERE f.aoguid=%s AND f.houseguid=o.aoguid",(self.guid,))
+                    self._stat['found_b'] = cur.fetchone()[0]
 
     def CalcRecStat(self, typ, savemode=1):
         res = self.stat(typ[:-2])
@@ -263,7 +263,7 @@ class fias_AO(object):
             if value != None:
                 self._stat[item + '_r'] = value
 
-    def stat(self, typ, savemode=1):
+    def stat(self, typ, savemode=0):
         '''Statistic of childs for item'''
         #Calculable values
         (r, t0) = ('_r', typ[:-2]) if typ.endswith('_r') else ('', typ)
@@ -285,15 +285,19 @@ class fias_AO(object):
         if not (typ in self._stat) and self.guid != None:
             self.pullstat()
         #If still no stat - calculate
-        if self._stat.get(typ) == None:
+        if typ not in self._stat:
             if r:
                 self.CalcRecStat(typ, savemode)
             else:
                 self.CalcAreaStat(typ)
             self.SaveAreaStat(savemode)
+        if typ not in self._stat:
+            logging.error("Not calculated stat " + typ)
+            logging.error(self._stat.items())
+            logging.error(self.guid)
         return self._stat[typ]
 
-    def SaveAreaStat(self, mode=1):
+    def SaveAreaStat(self, mode=0):
         '''Save statistic to DB
         mode - 0 if have any slice, 1 - if have all not recursive, 2 - if have all
         '''
@@ -315,6 +319,8 @@ class fias_AO(object):
         elif a or b or ar or br:
             stat_cur.execute('INSERT INTO fiosm_stat (aoguid) VALUES (%s)', (self.guid,))
         else:
+            del stat['guid']
+            self._stat = stat
             return
 
         if (mode == 0 and a) or (mode == 1 and a and b) or f:
