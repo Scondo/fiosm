@@ -119,6 +119,10 @@ def StatTableReCreate():
 );""")
 
 
+def StatIdxCreate():
+    cur.execute("CREATE INDEX fiosm_stat_aoguid_idx ON fiosm_stat USING btree (aoguid);")
+
+
 def AssocTableReCreate():
     cur.execute("DROP TABLE IF EXISTS " + prefix + pl_aso_tbl)
     cur.execute("CREATE TABLE " + prefix + pl_aso_tbl + "(aoguid UUID,  osm_admin bigint);")
@@ -138,6 +142,34 @@ CREATE INDEX """ + prefix + pl_aso_tbl + "_osm_admin_idx ON " + prefix + pl_aso_
 CREATE INDEX """ + prefix + way_aso_tbl + "_osm_way_idx ON " + prefix + way_aso_tbl + """ USING btree (osm_way);""")
 
 
+def CleanupTableReCreate():
+    cur.execute("DROP TABLE IF EXISTS fiosm_cleanup")
+    cur.execute("CREATE TABLE fiosm_cleanup (tablename CHARACTER VARYING (120),  osmid   bigint);")
+
+
+def CleanupTriggersReCreate():
+    cur.execute("""CREATE OR REPLACE FUNCTION on_del_poly () RETURNS trigger AS
+   $BODY$
+   BEGIN
+      INSERT INTO fiosm_cleanup (tablename, osmid) VALUES ('""" + prefix + poly_table + """', OLD.osm_id);
+   END;
+   $BODY$
+   LANGUAGE plpgsql  VOLATILE  COST 100""")
+    cur.execute("DROP TRIGGER IF EXISTS tr_del_poly ON public." + prefix + poly_table)
+    cur.execute("""CREATE TRIGGER tr_del_poly
+   BEFORE DELETE ON public.""" + prefix + poly_table + " FOR EACH ROW EXECUTE PROCEDURE on_del_poly();")
+
+    cur.execute("""CREATE OR REPLACE FUNCTION on_del_way () RETURNS trigger AS
+   $BODY$
+   BEGIN
+      INSERT INTO fiosm_cleanup (tablename, osmid) VALUES ('""" + prefix + ways_table + """', OLD.osm_id);
+   END;
+   $BODY$
+   LANGUAGE plpgsql  VOLATILE  COST 100""")
+    cur.execute("DROP TRIGGER IF EXISTS tr_del_way ON public." + prefix + ways_table)
+    cur.execute("""CREATE TRIGGER tr_del_way
+   BEFORE DELETE ON public.""" + prefix + ways_table + " FOR EACH ROW EXECUTE PROCEDURE on_del_way();")
+
 if __name__ == '__main__':
     parser = ArgumentParser(description="Deploy FIOSM database part")
     parser.add_argument("--assocAO", action='store_true')
@@ -146,12 +178,13 @@ if __name__ == '__main__':
     parser.add_argument("--stat", action='store_true')
     parser.add_argument("--idx", action='store_true')
 
-    args = parser.parse_args("-h")
+    args = parser.parse_args()
     if args.assocAO or args.assoc:
         AssocTableReCreate()
     if args.assocB or args.assoc:
         AssocBTableReCreate()
     if args.stat:
         StatTableReCreate()
+        StatIdxCreate()
     if args.idx:
         AssocIdxCreate()
