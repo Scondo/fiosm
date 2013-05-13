@@ -105,12 +105,21 @@ class fias_AO(object):
     def delkind(self):
         self._kind = None
 
-    kind=property(getkind,setkind,delkind,'''Basic type of object
+    kind = property(getkind, setkind, delkind, '''Basic type of object
         0-not found
         1-street
         2-found as area
         ''')
-    
+
+    @property
+    def txtkind(self):
+        if self.kind == 0:
+            return u'нет в ОСМ'
+        elif self.kind == 1:
+            return u'улица'
+        elif self.kind == 2:
+            return u'территория'
+
     def getFiasData(self):
         cur=conn.cursor()
         if self.guid:
@@ -438,7 +447,7 @@ class fias_HO(object):
         if self._guid == None:
             return
         cur = conn.cursor()
-        cur.execute("SELECT osm_build, point FROM " + prefix + bld_aso_tbl + " WHERE aoguid=%s" (self._guid,))
+        cur.execute("SELECT osm_build, point FROM " + prefix + bld_aso_tbl + " WHERE aoguid=%s", (self._guid,))
         res = cur.fetchone()
         if res:
             self._osmid = res[0]
@@ -455,6 +464,15 @@ class fias_HO(object):
         if self._osmkind == None:
             self.getosm()
         return self._osmkind
+
+    @property
+    def txtkind(self):
+        if self.osmkind == None:
+            return u'нет в ОСМ'
+        elif self.osmkind == 1:
+            return u'точка'
+        elif self.osmkind == 0:
+            return u'полигон'
 
     def getfias(self):
         if self.guid == None:
@@ -488,6 +506,10 @@ class fias_HO(object):
                 self._str = self._str + u' с' + self.struc
         return self._str
 
+    @property
+    def name(self):
+        return self.onestr
+
     def equal_to_str(self, guess):
         return bool(self.onestr == guess)
 
@@ -504,7 +526,7 @@ class fias_AONode(fias_AO):
         self._subO = {}
 
     def subHO(self, typ):
-        if self.kind == 0 and typ != 'not found_b':
+        if self.kind == 0 and typ == 'found_b':
             return []
         if self.guid == None:
             return []

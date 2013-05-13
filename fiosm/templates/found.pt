@@ -15,14 +15,18 @@
 .meter{ 
     width: 100% 
 }
+.metercol{ 
+    width: 20% 
+}
 </style>
 </head>
 <body>
 	<table class="header" border="0">
 		<tr>
 			<td>${myself.name}</td>
-			<td>Выше:<a href="${links(myself,'top')}">${myself.parent.name}</a></td>
+			<td>Выше: <a href="${links(myself,'top')}">${myself.parent.name}</a></td>
 		</tr>
+		<tr><td>Статус: ${myself.txtkind}</td></tr>
 		<tr tal:condition="myself.guid">
 			<td><a href="${links(myself,'details')}">Информация ФИАС</a></td>
 		</tr>
@@ -50,15 +54,15 @@
 					</tr>
 					<tr>
 						<td>Всего домов</td>
-						<td>${myself.stat('all_b')}</td>
+						<td><a href="${links(myself,'all_b')}">${myself.stat('all_b')}</a></td>
 					</tr>
 					<tr>
 						<td>Найдено домов</td>
-						<td>${myself.stat('found_b')}</td>
+						<td><a href="${links(myself,'found_b')}">${myself.stat('found_b')}</a></td>
 					</tr>
 					<tr>
 						<td>Не найдено домов</td>
-						<td>${myself.stat('not found_b')}</td>
+						<td><a href="${links(myself,'not found_b')}">${myself.stat('not found_b')}</a></td>
 					</tr>
 				</table>
 			</td>
@@ -73,16 +77,20 @@
 		<thead>
 			<tr>
 				<th>Название</th>
-				<th>Адресные элементы</th>
-				<th>Дома</th>
+				<th>Статус</th>
+				<th tal:condition="not bld" class="metercol">Адресные элементы</th>
+				<th tal:condition="not bld" class="metercol">Дома</th>
 			</tr>
 		</thead>
 		<tr tal:repeat="row list">
-			<td><a href="${links(row,'all')}">${row.name}</a></td>
-			<td><meter class="meter" value="${row.stat('all_found')}" optimum="${row.stat('all')}"
+			<td><a tal:omit-tag="bld" href="${links(row,'all')}">${row.name}</a></td>
+			<td>${row.txtkind}</td>
+			<td tal:condition="not bld" class="metercol">
+			<meter class="meter" value="${row.stat('all_found')}" optimum="${row.stat('all')}"
 			max="${row.stat('all')}" low="${row.stat('all_low')}" high="${row.stat('all_high')}" 
 			title="${row.stat('all_found')}/${row.stat('all')}">${row.stat('all_found')}/${row.stat('all')}</meter></td>
-			<td><meter class="meter" value="${row.stat('found_b')}" optimum="${row.stat('all_b')}"
+			<td tal:condition="not bld" class="metercol">
+			<meter class="meter" value="${row.stat('found_b')}" optimum="${row.stat('all_b')}"
 			max="${row.stat('all_b')}" low="${row.stat('all_low_b')}" high="${row.stat('all_high_b')}" 
 			title="${row.stat('found_b')}/${row.stat('all_b')}">${row.stat('found_b')}/${row.stat('all_b')}</meter></td>
 		</tr>
