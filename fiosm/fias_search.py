@@ -5,19 +5,18 @@ import melt
 import mangledb
 mangledb.InitMangle(False)
 from config import *
-cur=melt.conn.cursor()
 
 
-def Subareas(osmid):
+def Subareas(elem):
     '''Calculate subareas of relation by member role 'subarea'
     return dict with names as key and osmid as values
     '''
-    if osmid>0:
+    if elem.osmid > 0:
         #applicable only to relation i.e. negative osmid
         return {}
     else:
-        osmid=osmid*(-1)
-    
+        osmid = elem.osmid * (-1)
+    cur = elem.conn.cursor()
     cur.execute("SELECT members FROM "+prefix+slim_rel_tbl+" WHERE id=%s",(osmid,))
     mem=cur.fetchone()
     if mem==None:
@@ -44,6 +43,7 @@ def FindCandidates(pgeom,elem,tbl=prefix+poly_table,addcond=""):
     
     return ( [(name, osmid),..],formal)
     '''
+    cur = elem.conn.cursor()
     formal=True
     name='%'+elem.formalname+'%'
     if pgeom==None:
@@ -80,6 +80,7 @@ def FindMangled(pgeom, elem, tbl=prefix + ways_table, addcond=""):
             return
     else:
         return
+    cur = elem.conn.cursor()
     if pgeom == None:
         cur.execute("SELECT name, osm_id FROM " + tbl + " WHERE lower(name) = lower(%s)" + addcond, (mangl_n,))
     else:
@@ -116,6 +117,7 @@ def FindAssocStreet(elem,pgeom):
 def AssocBuild(elem, point):
     '''Search and save building association for elem
     '''
+    cur = elem.conn.cursor()
     if point:
         cur.execute("""SELECT osm_id, "addr:housenumber" FROM """ + prefix + point_table + """ WHERE "addr:street"=%s AND ST_Within(way,%s)""", (elem.name, elem.geom))
     else:
@@ -124,19 +126,21 @@ def AssocBuild(elem, point):
     if not osm_h:
         return []
     #Filtering of found is optimisation for updating and also remove POI with address
-    found_pre = set([h.onestr for h in elem.subHO('found_b')])
-    osm_h = filter(lambda it: it[1] not in found_pre, osm_h)
+    #found_pre = set([h.onestr for h in elem.subO('found_b')])
+    #osm_h = filter(lambda it: it[1] not in found_pre, osm_h)
     found = {}
     for hid, number in osm_h:
-        for house in tuple(elem.subHO('not found_b')):
+        for house in tuple(elem.subO('not found_b')):
             if house.equal_to_str(number):
                 found[hid] = house.guid
-                #found.append({'h_id': hid, 'guid': house.guid})
-    melt.conn.autocommit=False
-    for myrow in found.iteritems():
-        cur.execute("INSERT INTO " + prefix + bld_aso_tbl + " (aoguid,osm_build,point) VALUES (%s, %s, %s)", (myrow[1], myrow[0], point))
-    melt.conn.commit()
-    melt.conn.autocommit=True
+                house._osmid = hid
+                house._osmkind = point
+    if found:
+        elem.conn.autocommit = False
+        for myrow in found.iteritems():
+            cur.execute("INSERT INTO " + prefix + bld_aso_tbl + " (aoguid,osm_build,point) VALUES (%s, %s, %s)", (myrow[1], myrow[0], point))
+        elem.conn.commit()
+        elem.conn.autocommit = True
 
 
 def AssociateO(elem):
@@ -149,6 +153,7 @@ def AssociateO(elem):
         return
     AssocBuild(elem, 0)
     AssocBuild(elem, 1)
+    cur = elem.conn.cursor()
     #run processing for found to parse their subs
     for sub in tuple(elem.subAO('found', False)):
         AssociateO(melt.fias_AONode(sub))
@@ -157,16 +162,16 @@ def AssociateO(elem):
         sub_ = melt.fias_AONode(sub)
         streets=FindAssocStreet(sub_,elem.geom)
         if streets<>None:
-            melt.conn.autocommit=False
+            elem.conn.autocommit = False
             for street in streets:
                 cur.execute("SELECT osm_way FROM "+prefix+way_aso_tbl+" WHERE osm_way=%s",(street,))
                 if not cur.fetchone():
                     cur.execute("INSERT INTO " +  prefix+way_aso_tbl + " (aoguid,osm_way) VALUES (%s, %s)", (sub.guid, street))
-            melt.conn.commit()
-            melt.conn.autocommit=True
+            elem.conn.commit()
+            elem.conn.autocommit = True
             AssociateO(sub_)
     #search for new elements
-    subareas=Subareas(elem.osmid)
+    subareas = Subareas(elem)
     for sub in tuple(elem.subAO('not found', False)):
         sub_ = melt.fias_AONode(sub)
         adm_id=None
@@ -188,11 +193,11 @@ def AssociateO(elem):
         else:
             streets=FindAssocStreet(sub_,elem.geom)
             if streets<>None:
-                melt.conn.autocommit=False
+                elem.conn.autocommit = False
                 for street in streets:
                     cur.execute("INSERT INTO " + prefix + way_aso_tbl + " (aoguid,osm_way) VALUES (%s, %s)", (sub.guid, street))
-                melt.conn.commit()
-                melt.conn.autocommit=True
+                elem.conn.commit()
+                elem.conn.autocommit = True
                 elem.child_found(sub, 'street')
                 sub_.kind = 1
                 sub_.osmid = streets[0]
@@ -206,6 +211,7 @@ def AssocRegion(guid):
     if not region.kind:
         adm_id = FindAssocPlace(region, None)
         if adm_id != None:
+            cur = region.conn.cursor()
             cur.execute("INSERT INTO " + prefix + pl_aso_tbl + " (aoguid,osm_admin) VALUES (%s, %s)", (guid, adm_id))
             region = melt.fias_AONode(guid, 2, adm_id)
 
@@ -213,12 +219,17 @@ def AssocRegion(guid):
     print region.name.encode('UTF-8') + str(region.kind)
 
 
+def fedobj():
+    conn = melt.psycopg2.connect(melt.connstr)
+    cur = conn.cursor()
+    cur.execute("SELECT aoguid FROM fias_addr_obj f WHERE parentguid is Null")
+    return [it[0] for it in cur.fetchall()]
+
+
 def AssORoot():
     '''Associate and process federal subject (they have no parent id and no parent geom)
     '''
-    cur.execute("SELECT aoguid FROM fias_addr_obj f WHERE parentguid is Null")
-    fedobj = [it[0] for it in cur.fetchall()]
-    for sub in fedobj:
+    for sub in fedobj():
         AssocRegion(sub)
 
 
@@ -228,9 +239,7 @@ def AssORootM():
     from multiprocessing import Pool
     pool = Pool()
     results = []
-    cur.execute("SELECT aoguid FROM fias_addr_obj f WHERE parentguid is Null")
-    fedobj = [it[0] for it in cur.fetchall()]
-    for sub in fedobj:
+    for sub in fedobj():
         results.append(pool.apply_async(AssocRegion, (sub,)))
 
     while results:

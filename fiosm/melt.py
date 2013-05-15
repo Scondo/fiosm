@@ -14,12 +14,7 @@ import logging
 
 import mangledb
 from config import *
-conn=psycopg2.connect(connstr)
-conn.autocommit=True
-
-stat_conn = psycopg2.connect(connstr)
-stat_conn.autocommit = False
-stat_cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+stat_conn = None
 
 socr_cache={}
 #with keys socr#aolev
@@ -31,14 +26,25 @@ typ_cond = {'all': '',
          }
 
 
-class fias_AO(object):
-    def __init__(self, guid=None, kind=None, osmid=None, parent=None):
+class fias_O(object):
+    def __init__(self, guid=None, kind=None, osmid=None, parent=None, conn=None):
+        if conn == None:
+            #Connection must not be global to be more thread-safe
+            self.conn = psycopg2.connect(connstr)
+            self.conn.autocommit = True
+        else:
+            #Yet we can share connection to keep ttheir number low
+            self.conn = conn
+        self._guid = guid
+        self._osmid = osmid
+        self._osmkind = kind
+
+class fias_AO(fias_O):
+    def __init__(self, guid=None, kind=None, osmid=None, parent=None, conn=None):
         if not guid:
             guid = None
-        self._guid = guid
-        self._osmkind = None
+        fias_O.__init__(self, guid, None, osmid, parent, conn)
         self.setkind(kind)
-        self._osmid = osmid
         self._parent = parent
         self._stat={}
         self._fias = None
@@ -46,7 +52,7 @@ class fias_AO(object):
     def getguid(self):
         if not self._osmkind or self._osmid == None:
             return
-        cur = conn.cursor()
+        cur = self.conn.cursor()
         if self._osmkind == 2:
             #'found'
             cur.execute('SELECT aoguid FROM ' + prefix + pl_aso_tbl + ' WHERE osm_admin=%s', (self._osmid,))
@@ -65,7 +71,7 @@ class fias_AO(object):
         return self._guid
 
     def calkind(self):
-        cur=conn.cursor()
+        cur = self.conn.cursor()
         #'found'
         cur.execute('SELECT osm_admin FROM '+prefix+pl_aso_tbl+' WHERE aoguid=%s',(self.guid,))
         cid=cur.fetchone()
@@ -121,7 +127,7 @@ class fias_AO(object):
             return u'территория'
 
     def getFiasData(self):
-        cur=conn.cursor()
+        cur = self.conn.cursor()
         if self.guid:
             cur.execute('SELECT parentguid, updatedate, postalcode, code, okato, oktmo, offname, formalname, shortname, aolevel FROM fias_addr_obj WHERE aoguid=%s',(self.guid,))
             firow=cur.fetchone()
@@ -170,7 +176,7 @@ class fias_AO(object):
     def fullname(self):
         key=u"#".join((self._shortname,str(self._aolevel)))
         if key not in socr_cache:
-            cur = conn.cursor()
+            cur = self.conn.cursor()
             cur.execute("""SELECT lower(socrname) FROM fias_socr_obj s
             WHERE scname=%s AND level=%s """, (self._shortname, self._aolevel))
             res = cur.fetchone()
@@ -209,7 +215,7 @@ class fias_AO(object):
         #check in pulled children
         if hasattr(self, '_subO') and typ in self._subO:
                 self._stat[typ] = len(self._subO[typ])
-        cur = conn.cursor()
+        cur = self.conn.cursor()
         if typ in ('all','found','street'):
             if ('all' in self._stat and self._stat['all']==0) or (self.kind==0 and typ=='found') or (self.kind<2 and typ=='street'):
                 self._stat[typ]=0
@@ -230,9 +236,10 @@ class fias_AO(object):
                 self._stat[typ] = 0
                 return
             #all building children are easily available from all_b
-            if hasattr(self, '_subO') and ('all_b' in self._subO):
+            if hasattr(self, '_subO'):
                 self._stat[typ] = len(self.subO(typ))
                 return
+            #if not node
             if typ=='all_b':
                 cur.execute("SELECT count(distinct(houseguid)) FROM fias_house WHERE aoguid=%s", (self.guid,))
                 self._stat['all_b'] = cur.fetchone()[0]
@@ -259,8 +266,9 @@ class fias_AO(object):
         if row == None:
             if self.guid == None:
                 return
-            stat_cur.execute('SELECT * FROM fiosm_stat WHERE aoguid=%s', (self.guid, ))
-            row = stat_cur.fetchone()
+            cur = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            cur.execute('SELECT * FROM fiosm_stat WHERE aoguid=%s', (self.guid, ))
+            row = cur.fetchone()
             if row == None:
                 return
 
@@ -320,7 +328,12 @@ class fias_AO(object):
         br = ('all_b_r' in stat) and ('found_b_r' in stat)
         f = mode == 2 and a and b and ar and br
         self._stat = {}
-
+        if stat_conn == None:
+            stat_conn_ = psycopg2.connect(connstr)
+            stat_conn_.autocommit = False
+        else:
+            stat_conn_ = stat_conn
+        stat_cur = stat_conn_.cursor(cursor_factory=psycopg2.extras.DictCursor)
         stat_cur.execute('SELECT * FROM fiosm_stat WHERE aoguid=%s', (self.guid,))
         row = stat_cur.fetchone()
         if row:
@@ -347,7 +360,7 @@ class fias_AO(object):
             if stat['all_b_r'] != self._stat.get('all_b_r') or stat['found_b_r'] != self._stat.get('found_b_r'):
                 stat_cur.execute('UPDATE fiosm_stat SET all_b_r=%(all_b_r)s, found_b_r=%(found_b_r)s WHERE aoguid = %(guid)s', stat)
 
-        stat_conn.commit()
+        stat_conn_.commit()
         del stat['guid']
         self._stat = stat
 
@@ -358,7 +371,7 @@ class fias_AO(object):
             return u"Россия"
 
         if not hasattr(self, '_name'):
-            cur = conn.cursor()
+            cur = self.conn.cursor()
             if self.kind == 2:
                 cur.execute('SELECT name FROM ' + prefix + poly_table + '  WHERE osm_id=%s ', (self.osmid,))
                 name = cur.fetchone()
@@ -398,7 +411,7 @@ class fias_AO(object):
             return None
         if hasattr(self,'_geom'):
             return self._geom
-        cur_=conn.cursor()
+        cur_ = self.conn.cursor()
         if self.kind==2 and self.osmid<>None:
             cur_.execute("SELECT way FROM "+prefix+poly_table+" WHERE osm_id=%s",(self.osmid,))
             self._geom=cur_.fetchone()[0]
@@ -410,11 +423,9 @@ class fias_AO(object):
         return self._geom
 
 
-class fias_HO(object):
-    def __init__(self, guid=None, osmid=None, osmkind=None):
-        self._guid = guid
-        self._osmid = osmid
-        self._osmkind = osmkind
+class fias_HO(fias_O):
+    def __init__(self, guid=None, osmid=None, osmkind=None, conn=None):
+        fias_O.__init__(self, guid, osmkind, osmid, None, conn)
         if guid == None and (osmid == None or osmkind == None):
             raise AssertionError()
         self._fias = {}
@@ -431,7 +442,7 @@ class fias_HO(object):
     def getguid(self):
         if self._osmid == None or self._osmkind == None:
             return
-        cur = conn.cursor()
+        cur = self.conn.cursor()
         cur.execute("SELECT aoguid FROM " + prefix + bld_aso_tbl + " WHERE osm_build=%s AND point=%s " (self._osmid, self._osmkind))
         res = cur.fetchone()
         if res:
@@ -446,7 +457,7 @@ class fias_HO(object):
     def getosm(self):
         if self._guid == None:
             return
-        cur = conn.cursor()
+        cur = self.conn.cursor()
         cur.execute("SELECT osm_build, point FROM " + prefix + bld_aso_tbl + " WHERE aoguid=%s", (self._guid,))
         res = cur.fetchone()
         if res:
@@ -477,7 +488,7 @@ class fias_HO(object):
     def getfias(self):
         if self.guid == None:
             return
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cur.execute("SELECT * FROM fias_house WHERE houseguid=%s" (self.guid,))
         res = cur.fethone()
         if res:
@@ -525,30 +536,6 @@ class fias_AONode(fias_AO):
             fias_AO.__init__(self, *args, **kwargs)
         self._subO = {}
 
-    def subHO(self, typ):
-        if self.kind == 0 and typ == 'found_b':
-            return []
-        if self.guid == None:
-            return []
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        if typ == 'found_b':
-            t_cond = ' AND NOT (o.osm_build IS NULL)'
-        elif typ == 'not found_b':
-            t_cond = ' AND (o.osm_build IS NULL)'
-        elif typ == 'all_b':
-            t_cond = ''
-        else:
-            return []
-        cur.execute("SELECT o.osm_build, o.point, f.* FROM fias_house f LEFT JOIN " + prefix + bld_aso_tbl + " o ON f.houseguid=o.aoguid WHERE f.aoguid=%s " + t_cond, (self.guid,))
-        self._subO[typ] = []
-        for row in cur.fetchall():
-            el = fias_HO(row['houseguid'], row[0], row[1])
-            el.build = row['buildnum']
-            el.number = row['housenum']
-            el.struc = row['strucnum']
-            self._subO[typ].append(el)
-        return self._subO[typ]
-
     def subAO(self, typ, need_stat=True):
         if typ in self._subO:
             return self._subO[typ]
@@ -566,7 +553,7 @@ class fias_AONode(fias_AO):
 
         fias_sel = "f.formalname, f.shortname, f.offname, f.aolevel"
         #make request
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         if typ == 'found':
             osmid = 'osm_admin'
             cur.execute('SELECT f.aoguid, ' + fias_sel + ', a.' + osmid + ', o.name' + stat_sel + ' FROM fias_addr_obj f INNER JOIN ' + prefix + pl_aso_tbl + ' a ON f.aoguid=a.aoguid INNER JOIN ' + prefix + poly_table + ' o ON a.' + osmid + '=o.osm_id ' + stat_join + ' WHERE parentguid' + cmpop + '%s', (self.guid,))
@@ -583,7 +570,7 @@ class fias_AONode(fias_AO):
             return []
         self._subO[typ] = []
         for row in cur.fetchall():
-            el = fias_AO(row[0], kind, row[osmid] if osmid else None, self.guid)
+            el = fias_AO(row[0], kind, row[osmid] if osmid else None, self.guid, self.conn)
             el._formalname = row['formalname']
             el._offname = row['offname']
             el._shortname = row['shortname']
@@ -608,21 +595,22 @@ class fias_AONode(fias_AO):
             res.extend(self.subO('not found'))
             return res
 
-        if typ == 'all_b' and 'found_b' in self._subO and 'not found_b' in self._subO:
+        if typ == 'all_b':
+            cur = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            cur.execute("SELECT o.osm_build, o.point, f.* FROM fias_house f LEFT JOIN " + prefix + bld_aso_tbl + " o ON f.houseguid=o.aoguid WHERE f.aoguid=%s", (self.guid,))
             self._subO[typ] = []
-            self._subO[typ].extend(self._subO['found_b'])
-            del self._subO['found_b']
-            self._subO[typ].extend(self._subO['not found_b'])
-            del self._subO['not found_b']
+            for row in cur.fetchall():
+                el = fias_HO(row['houseguid'], row[0], row[1], self.conn)
+                el.build = row['buildnum']
+                el.number = row['housenum']
+                el.struc = row['strucnum']
+                self._subO[typ].append(el)
             return self._subO[typ]
 
-        if typ.endswith('_b'):
-            if 'all_b' in self._subO:
-                if typ == 'found_b':
-                    return filter(lambda h: h.osmid, self._subO['all_b'])
-                elif typ == 'not found_b':
-                    return filter(lambda h: h.osmid == None, self._subO['all_b'])
-            return self.subHO(typ)
+        if typ == 'found_b':
+            return filter(lambda h: h.osmid, self.subO('all_b'))
+        elif typ == 'not found_b':
+            return filter(lambda h: h.osmid == None, self.subO('all_b'))
 
     def child_found(self, child, typ):
         if 'not found' in self._subO:
