@@ -1,200 +1,238 @@
 #!/usr/bin/python
+# -*- coding: UTF8 -*-
 from __future__ import division
-from config import connstr
-
-import psycopg2
-import gzip
-#import uuid
-#import psycopg2.extras
-#psycopg2.extras.register_uuid()
 import xml.parsers.expat
 import datetime
-#import threading
-
-conn=psycopg2.connect(connstr)#,async=True)
-conn.autocommit = False
-cur=conn.cursor()
-
-upd=False
-
-def addr_recreate():
-    cur.execute("DROP TABLE IF EXISTS fias_addr_obj")
-    cur.execute("""CREATE TABLE fias_addr_obj(
-   formalname CHARACTER VARYING (120), aoguid UUID PRIMARY KEY, parentguid UUID,
-   regioncode   CHARACTER (2), autocode CHARACTER (1), areacode CHARACTER (3),
-   citycode     CHARACTER (3), ctarcode CHARACTER (3), placecode CHARACTER (3),
-   streetcode   CHARACTER (4), extrcode CHARACTER (4), sextcode CHARACTER (3),
-   offname      CHARACTER VARYING (120), postalcode integer,
-ifnsfl smallint, terrifnsfl smallint, ifnsul smallint, terrifnsul smallint,
-   okato bigint,  oktmo integer, updatedate date,
-   shortname    CHARACTER VARYING (10),  aolevel      integer,
-   aoid UUID, previd UUID, nextid UUID,
-   code         CHARACTER VARYING (17), plaincode CHARACTER VARYING (15),
-   actstatus    smallint,   centstatus   smallint,   operstatus   smallint,  currstatus  integer,
-   startdate date,   enddate  date, normdoc UUID, livestatus   BOOLEAN);""")
-    cur.commit()
+from urllib import urlretrieve, urlcleanup
+from os.path import exists
+import rarfile
+updating = ("normdoc", "house", "addrobj", "socrbase")
+import fias_db
+import uuid
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+Session = sessionmaker()
+session = Session()
+upd = False
+now_row = 0
 
 
-def socr_recreate():
-    cur.execute("DROP TABLE IF EXISTS fias_socr_obj")
-    cur.execute("""CREATE TABLE fias_socr_obj
-(level integer, scname CHARACTER VARYING (10), socrname CHARACTER VARYING (50),
- kod_t_st   CHARACTER VARYING (4));
+class FiasFiles(object):
+    def __new__(cls):
+        if not hasattr(cls, 'instance'):
+            cls.instance = super(FiasFiles, cls).__new__(cls)
+            self = cls.instance
+            self.full_file = None
+            self.full_ver = None
+            self.full_temp = None
+            self.fias_list = {}
+            try:
+                from pysimplesoap import client
+                client.TIMEOUT = None
+                fias = client.SoapClient(wsdl="http://fias.nalog.ru/WebServices/Public/DownloadService.asmx?WSDL", trace=False)
+                fias_list_raw = fias.GetAllDownloadFileInfo()
+                if fias_list_raw and 'GetAllDownloadFileInfoResult' in fias_list_raw:
+                    for it in fias_list_raw['GetAllDownloadFileInfoResult']:
+                        one = it['DownloadFileInfo']
+                        ver = one['VersionId']
+                        del one['VersionId']
+                        self.fias_list[ver] = one
+            except:
+                pass
+        return cls.instance
 
-CREATE UNIQUE INDEX fias_socr_obj_level_scname_idx ON fias_socr_obj USING btree (level, scname);
-    """)
-    conn.commit()
+    def maxver(self):
+        return max(self.fias_list.iterkeys())
+
+    def get_fullarch(self):
+        if self.full_file == None or not exists(self.full_file):
+            urlretrieve(self.fias_list[self.maxver()]['FiasCompleteXmlUrl'], self.full_file)
+            self.full_ver = self.maxver()
+            # TODO: Get GUID, date and save version
+
+    def get_fullfile(self, table):
+        self.get_fullarch()
+        arch = rarfile.RarFile(self.full_file)
+        for filename in arch.namelist():
+            if filename[3:].lower().startswith(table + '_'):
+                return (arch.open(filename), self.full_ver)
+
+    def get_updfile(self, table, ver):
+        archfile = urlretrieve(self.fias_list[ver]['FiasDeltaXmlUrl'])
+        arch = rarfile.RarFile(archfile)
+        for filename in arch.namelist():
+            if filename.lower().beginswith(table):
+                return arch.open(filename)
+
+    def __del__(self):
+        urlcleanup()
 
 
-def house_recreate():
-    cur.execute("DROP TABLE IF EXISTS fias_house")
-    # , counter INTEGER
-    cur.execute("""CREATE TABLE fias_house(
-    postalcode integer,
-ifnsfl smallint, terrifnsfl smallint, ifnsul smallint, terrifnsul smallint,
-   okato bigint,  oktmo integer, updatedate date,
-   housenum CHARACTER VARYING (20), eststatus smallint,
-   buildnum CHARACTER VARYING (10), strucnum CHARACTER VARYING (10), strstatus smallint,
-   houseguid UUID, aoguid UUID,houseid UUID,
-   startdate date,   enddate  date,statstatus smallint, normdoc UUID);""")
-    conn.commit()
-
-
-def dict_to_2str(attrib):
-    fields=''
-    values=''
-    for k in attrib.keys():
-        fields=fields+','+k
-        values=values+', %('+k+')s'
-    fields=fields[1:]
-    values=values[1:]
-    return (fields,values)
-
-now_row=0
-pushed_rows=set()     
-def addr_obj_row(name,attrib):
-    global now_row,pushed_rows,upd
-    if name=='Object':# and attrib['AOID'] in buglist:
-        #       ins_addr_row(attrib,False)
-        #Simple Version
-        if not 'NEXTID' in attrib:
-            if 'AOGUID' in attrib:
-                if upd or attrib['AOGUID'] in pushed_rows:
-                    conn.commit()
-                    cur.execute("DELETE FROM fias_addr_obj WHERE aoguid=%s",(attrib['AOGUID'],))
-                    conn.commit()
-            else:    
-                print "Missed AOGuid"
-                print attrib
-            (fields,values)=dict_to_2str(attrib)
-            cur.execute("INSERT INTO fias_addr_obj ("+fields+") VALUES ("+values+")",attrib)
-            if not upd:
-                pushed_rows.add(attrib['AOGUID'])
+class GuidId(object):
+    def __init__(self, guidn, record):
+        self.cache = {}
+        self.guidn = guidn
+        if guidn in record.__table__.primary_key:
+            self.fast = True
         else:
-            if upd:
-                conn.commit()
-                cur.execute("DELETE FROM fias_addr_obj WHERE aoid=%s",(attrib['AOID'],))
-                conn.commit()
-        now_row+=1
+            self.fast = False
+        self.record = record
+        self.local = None
+
+    def chklocal(self):
+        if session.query(self.record).count() == 0:
+            self.local = True
+            self.max = 0
+        else:
+            self.local = False
+
+    def getid(self, guid):
+        if guid not in self.cache:
+            if self.local:
+                idO = None
+            elif self.local == False:
+                if self.fast:
+                    idO = session.query(self.record).get(guid)
+                else:
+                    idO = session.query(self.record).filter_by(**{self.guidn: guid}).first()
+            elif self.local == None:
+                self.chklocal()
+                return self.getid(guid)
+            else:
+                raise AssertionError('wrong cache state')
+            if idO == None:
+                idO = self.record({self.guidn: guid})
+                session.add(idO)
+                if self.local:
+                    self.max += 1
+                    idO.id = self.max
+                else:
+                    session.commit()
+            self.cache[guid] = idO.id
+        return self.cache[guid]
+
+NormdocGuidId = GuidId('normdocid', fias_db.Normdoc)
+
+
+def normdoc_row(name, attrib):
+    if name == "NormativeDocument":
+        docid = uuid.UUID(attrib['NORMDOCID'])
+        doc = session.query(fias_db.Normdoc).get(docid)
+        if doc == None:
+            doc = fias_db.Normdoc({'NORMDOCID': docid})
+            session.add(doc)
+        doc.fromdic(attrib)
+
+
+def socr_obj_row(name, attrib):
+    if name == "AddressObjectType":
+        socr = fias_db.Socrbase(attrib)
+        session.add(socr)
+
+
+def addr_obj_row(name, attrib):
+    global now_row, pushed_rows, upd
+    if name == 'Object':
+        if upd:
+            session.query(fias_db.Addrobj).filter_by(aoid=attrib['AOID']).delete()
+
+        if 'NEXTID' not in attrib and attrib.pop('LIVESTATUS', '0') == '1':
+            if 'NORMDOC' in attrib:
+                docid = uuid.UUID(attrib['NORMDOC'])
+                attrib['NORMDOC'] = NormdocGuidId.getid(docid)
+            aobj = fias_db.Addrobj(attrib)
+            session.add(aobj)
+
+        now_row += 1
         if now_row % 10000 == 0:
             print now_row
-            conn.commit()
-            #print "rows pending: "+str(len(arow_pending))
+            session.commit()
 
 
-def addr_drop_obsolete():
-    cur.execute("DELETE FROM fias_addr_obj WHERE NOT (nextid is Null);")
-    cur.commit()
-
-
-def addr_create_indexes():
-    cur.execute("""CREATE INDEX ao_parent_idx ON fias_addr_obj USING btree (parentguid);
-CLUSTER fias_addr_obj USING ao_parent_idx;
-""")
-
-
-def house_create_indexes():
-    cur.execute("""CREATE INDEX house_parent_idx ON fias_house USING btree (aoguid);
-CLUSTER fias_house USING house_parent_idx;
-""")
-
-
-def socr_obj_row(name,attrib):
-    if name=="AddressObjectType":
-        (fields,values)=dict_to_2str(attrib)
-        cur.execute("INSERT INTO fias_socr_obj ("+fields+") VALUES ("+values+")",attrib)
-        cur.commit()
-
-def house_row(name,attrib):
-    global upd,now_row
-    now_row+=1
+def house_row(name, attrib):
+    global upd, now_row
+    now_row += 1
     if now_row % 100000 == 0:
         print now_row
-        conn.commit()
+        session.commit()
 
-    if name=='House':
-        #if 'HOUSEID' in attrib:
-        #    del attrib['HOUSEID']
+    if name == 'House':
         if 'COUNTER' in attrib:
             del attrib['COUNTER']
-        
         if upd and ('HOUSEID' in attrib):
-            cur.execute("DELETE FROM fias_house WHERE houseid=%s",(attrib['HOUSEID'],))
-            conn.commit()
+            session.query(fias_db.House).filter_by(houseid=attrib['HOUSEID']).delete()
         if 'ENDDATE' in attrib:
-            ed=attrib['ENDDATE'].split('-')
-            enddate=datetime.date(int(ed[0]),int(ed[1]),int(ed[2]))
-            if enddate<datetime.date.today():
+            ed = attrib['ENDDATE'].split('-')
+            enddate = datetime.date(int(ed[0]), int(ed[1]), int(ed[2]))
+            if enddate < datetime.date.today():
                 return
-        (fields,values)=dict_to_2str(attrib)
-        cur.execute("INSERT INTO fias_house ("+fields+") VALUES ("+values+")",attrib)
+        if 'NORMDOC' in attrib:
+                docid = uuid.UUID(attrib['NORMDOC'])
+                attrib['NORMDOC'] = NormdocGuidId.getid(docid)
+        hous = fias_db.House(attrib)
+        session.add(hous)
 
 
-def gzipfi(fil):
-    if fil.name.endswith(".gz"):
-        gfil = gzip.open(fil.name, 'rb')
-        fil.close()
-        return gfil
-    else:
-        return fil
+def UpdateTable(table, fil, engine=None):
+    global upd, pushed_rows, now_row
+    if fil == None:
+        return
+    p = xml.parsers.expat.ParserCreate()
+    now_row = 0
+    if table == 'addrobj':
+        if not upd:
+            fias_db.Addrobj.__table__.drop(engine)
+            fias_db.Addrobj.__table__.create(engine)
+        p.StartElementHandler = addr_obj_row
+    elif table == 'socrbase':
+        session.query(fias_db.Socrbase).delete()
+        p.StartElementHandler = socr_obj_row
+    elif table == 'normdoc':
+        p.StartElementHandler = normdoc_row
+    elif table == 'house':
+        if not upd:
+            fias_db.House.__table__.drop(engine)
+            fias_db.House.__table__.create(engine)
+        p.StartElementHandler = house_row
+    p.ParseFile(fil)
+    session.commit()
+
 
 import argparse
-if __name__=="__main__":
-    parser=argparse.ArgumentParser(description="Reader of FIAS for FIOSM validator")
-    parser.add_argument("--addrobj",type=file)
-    parser.add_argument("--socrbase",type=file)
-    parser.add_argument("--house",type=file)
-    parser.add_argument("--upd",action='store_true')
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Reader of FIAS into database")
+    parser.add_argument("--fullfile")
+    parser.add_argument("--fullver", type=int)
     args = parser.parse_args()
-    upd=args.upd
-    if args.addrobj:
-        p = xml.parsers.expat.ParserCreate()
-        if not args.upd:
-            addr_recreate()
-        p.StartElementHandler=addr_obj_row
-        p.ParseFile(gzipfi(args.addrobj))
-        if not args.upd:
-            conn.commit()
-            addr_create_indexes()
-        del p
-        conn.commit()
-        pushed_rows=set()
-    if args.socrbase:
-        p = xml.parsers.expat.ParserCreate()
-        socr_recreate()
-        p.StartElementHandler=socr_obj_row
-        p.ParseFile(gzipfi(args.socrbase))
-        del p
-    if args.house:
-        p = xml.parsers.expat.ParserCreate()
-        nom_row = 0
-        if not args.upd:
-            house_recreate()
-        p.StartElementHandler = house_row
-        p.ParseFile(gzipfi(args.house))
-        del p
-        if not args.upd:
-            conn.commit()
-            house_create_indexes()
+    from config import conn_par
+    engine = create_engine("postgresql://{user}:{pass}@{host}/{db}".format(**conn_par), echo=True)
+    Session.configure(bind=engine)
+    session = Session()
+    fias_db.Base.metadata.create_all(engine)
+    fias = FiasFiles()
+    fias.full_file = args.fullfile
+    fias.full_ver = args.fullver
 
-        conn.commit()
+    sess = Session()
+    minver = None
+    for tabl in updating:
+        my = sess.query(fias_db.TableStatus).filter_by(tablename=tabl).first()
+        if my == None:
+            full = FiasFiles().get_fullfile(tabl)
+            if full != None:
+                upd = False
+                UpdateTable(tabl, full[0], engine)
+                my = fias_db.TableStatus(tabl, full[1])
+                sess.add(my)
+                sess.commit()
+
+        if my != None and (minver == None or minver > my.ver):
+            minver = my.ver
+    upd = True
+    for ver in range(minver + 1, FiasFiles().maxver() + 1):
+        for tabl in updating:
+            my = sess.query(fias_db.TableStatus).filter_by(tablename=tabl).first()
+            if my.ver < ver:
+                UpdateTable(tabl, FiasFiles().get_updfile(tabl, ver))
+                my.ver = ver
+                sess.commit()

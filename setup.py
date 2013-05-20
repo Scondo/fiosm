@@ -7,10 +7,13 @@ README = open(os.path.join(here, 'README.txt')).read()
 CHANGES = open(os.path.join(here, 'CHANGES.txt')).read()
 
 requires = [
-    'psycopg2' , 'ppygis' ,  'argparse'
-    'pyramid', 
-    'pyramid_debugtoolbar',
+    'psycopg2', 'ppygis',
+    'argparse'
+    'pyramid', 'pyramid_debugtoolbar',
     'waitress',
+    'sqlalchemy',
+    'rarfile',
+    'pysimplesoap'
     ]
 
 setup(name='fiosm',

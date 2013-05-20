@@ -1,4 +1,5 @@
-connstr="dbname=osm user=osm host=192.168.175.26 password=osm"
+conn_par = {"db": "osm", "user": "osm", "host": "192.168.56.102", "pass": "osm"}
+connstr = "dbname={db} user={user} host={host} password={pass}".format(**conn_par)
 
 prefix='planet_osm_'
 poly_table='polygon'
