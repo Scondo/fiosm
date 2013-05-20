@@ -6,7 +6,7 @@ import datetime
 from urllib import urlretrieve, urlcleanup
 from os.path import exists
 import rarfile
-updating = ("normdoc", "house", "addrobj", "socrbase")
+updating = ("normdoc", "addrobj", "socrbase", "house")
 import fias_db
 import uuid
 from sqlalchemy import create_engine
@@ -86,20 +86,24 @@ class GuidId(object):
         else:
             self.local = False
 
+    def getrec(self, guid):
+        if self.fast:
+            return session.query(self.record).get(guid)
+        else:
+            return session.query(self.record).filter_by(**{self.guidn: guid}).first()
+
     def getid(self, guid):
         if guid not in self.cache:
             if self.local:
                 idO = None
             elif self.local == False:
-                if self.fast:
-                    idO = session.query(self.record).get(guid)
-                else:
-                    idO = session.query(self.record).filter_by(**{self.guidn: guid}).first()
+                idO = self.getrec(guid)
             elif self.local == None:
                 self.chklocal()
                 return self.getid(guid)
             else:
                 raise AssertionError('wrong cache state')
+
             if idO == None:
                 idO = self.record({self.guidn: guid})
                 session.add(idO)
@@ -109,19 +113,43 @@ class GuidId(object):
                 else:
                     session.commit()
             self.cache[guid] = idO.id
+
         return self.cache[guid]
+
+    def pushrec(self, dic):
+        guid = dic[self.guidn]
+        if self.local:
+            self.max += 1
+            dic["id"] = self.max
+            idO = None
+        elif self.local == None:
+            self.chklocal()
+            return self.pushrec(dic)
+        else:
+            idO = self.getrec(guid)
+        if idO == None:
+            idO = self.record(dic)
+            session.add(idO)
+            if not self.local:
+                session.commit()
+        else:
+            idO.fromrow(dic)
+        self.cache[guid] = idO.id
+
 
 NormdocGuidId = GuidId('normdocid', fias_db.Normdoc)
 
 
 def normdoc_row(name, attrib):
+    global now_row
     if name == "NormativeDocument":
-        docid = uuid.UUID(attrib['NORMDOCID'])
-        doc = session.query(fias_db.Normdoc).get(docid)
-        if doc == None:
-            doc = fias_db.Normdoc({'NORMDOCID': docid})
-            session.add(doc)
-        doc.fromdic(attrib)
+        now_row += 1
+        if now_row % 100000 == 0:
+            print now_row
+            session.commit()
+        docid = uuid.UUID(attrib.pop('NORMDOCID'))
+        attrib['normdocid'] = docid
+        NormdocGuidId.pushrec(attrib)
 
 
 def socr_obj_row(name, attrib):
@@ -151,12 +179,12 @@ def addr_obj_row(name, attrib):
 
 def house_row(name, attrib):
     global upd, now_row
-    now_row += 1
-    if now_row % 100000 == 0:
-        print now_row
-        session.commit()
-
     if name == 'House':
+        now_row += 1
+        if now_row % 100000 == 0:
+            print now_row
+            session.commit()
+
         if 'COUNTER' in attrib:
             del attrib['COUNTER']
         if upd and ('HOUSEID' in attrib):
@@ -179,6 +207,7 @@ def UpdateTable(table, fil, engine=None):
         return
     p = xml.parsers.expat.ParserCreate()
     now_row = 0
+    print "start import " + table
     if table == 'addrobj':
         if not upd:
             fias_db.Addrobj.__table__.drop(engine)
@@ -196,7 +225,7 @@ def UpdateTable(table, fil, engine=None):
         p.StartElementHandler = house_row
     p.ParseFile(fil)
     session.commit()
-
+    print table + " imported"
 
 import argparse
 if __name__ == "__main__":
@@ -205,7 +234,7 @@ if __name__ == "__main__":
     parser.add_argument("--fullver", type=int)
     args = parser.parse_args()
     from config import conn_par
-    engine = create_engine("postgresql://{user}:{pass}@{host}/{db}".format(**conn_par), echo=True)
+    engine = create_engine("postgresql://{user}:{pass}@{host}/{db}".format(**conn_par), echo=False)
     Session.configure(bind=engine)
     session = Session()
     fias_db.Base.metadata.create_all(engine)
