@@ -3,11 +3,14 @@
 from __future__ import division
 import xml.parsers.expat
 import datetime
+import logging
 from urllib import urlretrieve, urlcleanup
 from os.path import exists
 import rarfile
 updating = ("normdoc", "addrobj", "socrbase", "house")
 import fias_db
+from fias_db import House, HouseFuture, HouseFMeta
+from fias_db import Addrobj, AddrobjFuture
 import uuid
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -116,7 +119,7 @@ class GuidId(object):
 
         return self.cache[guid]
 
-    def pushrec(self, dic):
+    def pushrec(self, dic, cache=True):
         guid = dic[self.guidn]
         if self.local:
             self.max += 1
@@ -134,7 +137,9 @@ class GuidId(object):
                 session.commit()
         else:
             idO.fromrow(dic)
-        self.cache[guid] = idO.id
+        if cache:
+            self.cache[guid] = idO.id
+        return idO.id
 
 
 NormdocGuidId = GuidId('normdocid', fias_db.Normdoc)
@@ -164,17 +169,57 @@ def addr_obj_row(name, attrib):
         if upd:
             session.query(fias_db.Addrobj).filter_by(aoid=attrib['AOID']).delete()
 
-        if 'NEXTID' not in attrib and attrib.pop('LIVESTATUS', '0') == '1':
-            if 'NORMDOC' in attrib:
-                docid = uuid.UUID(attrib['NORMDOC'])
-                attrib['NORMDOC'] = NormdocGuidId.getid(docid)
-            aobj = fias_db.Addrobj(attrib)
+        ed = attrib.pop('ENDDATE').split('-')
+        enddate = datetime.date(int(ed[0]), int(ed[1]), int(ed[2]))
+        if enddate < datetime.date.today():
+            if attrib.get('LIVESTATUS', '0') == '1':
+                logging.warn("Outdate yet live")
+                logging.warn(enddate)
+                logging.warn(attrib)
+            return
+
+        if attrib.get('LIVESTATUS', '0') != '1':
+            return
+
+        if 'NORMDOC' in attrib:
+            docid = uuid.UUID(attrib['NORMDOC'])
+            attrib['NORMDOC'] = NormdocGuidId.getid(docid)
+        sd = attrib.pop('STARTDATE').split('-')
+        startdate = datetime.date(int(sd[0]), int(sd[1]), int(sd[2]))
+        attrib['ENDDATE'] = enddate
+        attrib['STARTDATE'] = startdate
+        if startdate > datetime.date.today():
+            aobj = AddrobjFuture(attrib)
+            session.add(aobj)
+        else:
+            aobj = Addrobj(attrib)
             session.add(aobj)
 
         now_row += 1
         if now_row % 10000 == 0:
             print now_row
             session.commit()
+
+HouseGuidId = GuidId('houseguid', HouseFMeta)
+
+
+def put_house(dic, sd, ed, guid):
+    meta = {"STARTDATE": sd,
+            "ENDDATE": ed,
+            "houseguid": guid,
+            "HOUSEID": dic.pop("HOUSEID")}
+    f_id = HouseGuidId.pushrec(meta, False)
+    if HouseGuidId.local:
+        rec = None
+    else:
+        rec = session.query(fias_db.House).get(f_id)
+
+    if rec == None:
+        dic['f_id'] = f_id
+        rec = fias_db.House(dic)
+        session.add(rec)
+    else:
+        rec.fromdic(dic)
 
 
 def house_row(name, attrib):
@@ -185,20 +230,29 @@ def house_row(name, attrib):
             print now_row
             session.commit()
 
-        if 'COUNTER' in attrib:
-            del attrib['COUNTER']
-        if upd and ('HOUSEID' in attrib):
+        if upd:
             session.query(fias_db.House).filter_by(houseid=attrib['HOUSEID']).delete()
-        if 'ENDDATE' in attrib:
-            ed = attrib['ENDDATE'].split('-')
-            enddate = datetime.date(int(ed[0]), int(ed[1]), int(ed[2]))
-            if enddate < datetime.date.today():
-                return
+
+        ed = attrib.pop('ENDDATE').split('-')
+        enddate = datetime.date(int(ed[0]), int(ed[1]), int(ed[2]))
+        if enddate < datetime.date.today():
+            return
+
+        del attrib['COUNTER']
         if 'NORMDOC' in attrib:
                 docid = uuid.UUID(attrib['NORMDOC'])
                 attrib['NORMDOC'] = NormdocGuidId.getid(docid)
-        hous = fias_db.House(attrib)
-        session.add(hous)
+        sd = attrib.pop('STARTDATE').split('-')
+        startdate = datetime.date(int(sd[0]), int(sd[1]), int(sd[2]))
+        guid = uuid.UUID(attrib.pop("HOUSEGUID"))
+        if startdate > datetime.date.today():
+            attrib['ENDDATE'] = enddate
+            attrib['STARTDATE'] = startdate
+            attrib['HOUSEGUID'] = guid
+            hous = fias_db.HouseFuture(attrib)
+            session.add(hous)
+        else:
+            put_house(attrib, startdate, enddate, guid)
 
 
 def UpdateTable(table, fil, engine=None):
@@ -210,8 +264,10 @@ def UpdateTable(table, fil, engine=None):
     print "start import " + table
     if table == 'addrobj':
         if not upd:
-            fias_db.Addrobj.__table__.drop(engine)
-            fias_db.Addrobj.__table__.create(engine)
+            Addrobj.__table__.drop(engine)
+            Addrobj.__table__.create(engine)
+            AddrobjFuture.__table__.drop(engine)
+            AddrobjFuture.__table__.create(engine)
         p.StartElementHandler = addr_obj_row
     elif table == 'socrbase':
         session.query(fias_db.Socrbase).delete()
@@ -220,8 +276,12 @@ def UpdateTable(table, fil, engine=None):
         p.StartElementHandler = normdoc_row
     elif table == 'house':
         if not upd:
-            fias_db.House.__table__.drop(engine)
-            fias_db.House.__table__.create(engine)
+            House.__table__.drop(engine)
+            House.__table__.create(engine)
+            HouseFuture.__table__.drop(engine)
+            HouseFuture.__table__.create(engine)
+            HouseFMeta.__table__.drop(engine)
+            HouseFMeta.__table__.create(engine)
         p.StartElementHandler = house_row
     p.ParseFile(fil)
     session.commit()

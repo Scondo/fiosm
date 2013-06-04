@@ -25,9 +25,34 @@ typ_cond = {'all': '',
     'not found': None
          }
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, relationship, backref
+from sqlalchemy import ForeignKey, Column, Integer, BigInteger, SmallInteger
+from fias_db import Base, House, Addrobj
 
-class fias_O(object):
-    def __init__(self, guid=None, kind=None, osmid=None, parent=None, conn=None):
+
+class BuildAssoc(Base):
+    __tablename__ = prefix + bld_aso_tbl
+    f_id = Column(Integer, ForeignKey("fias_house.f_id"))
+    osm_build = Column(BigInteger, primary_key=True)
+    point = Column(SmallInteger, primary_key=True)
+    fias = relationship("House", backref=backref("osm", uselist=False), uselist=False, lazy='joined')
+
+
+def HouseTXTKind(self):
+    if self.osm is None:
+        return u'нет в ОСМ'
+    elif self.osm.point == 1:
+        return u'точка'
+    elif self.osm.point == 0:
+        return u'полигон'
+House.txtkind = property(HouseTXTKind)
+
+
+class fias_AO(object):
+    def __init__(self, guid=None, kind=None, osmid=None, parent=None, conn=None, session=None):
+        if not guid:
+            guid = None
         if conn == None:
             #Connection must not be global to be more thread-safe
             self.conn = psycopg2.connect(connstr)
@@ -35,15 +60,15 @@ class fias_O(object):
         else:
             #Yet we can share connection to keep ttheir number low
             self.conn = conn
+        if session == None:
+            engine = create_engine("postgresql://{user}:{pass}@{host}/{db}".format(**conn_par), pool_size=2)
+            Session = sessionmaker()
+            self.session = Session(bind=engine)
+        else:
+            self.session = session
         self._guid = guid
         self._osmid = osmid
-        self._osmkind = kind
-
-class fias_AO(fias_O):
-    def __init__(self, guid=None, kind=None, osmid=None, parent=None, conn=None):
-        if not guid:
-            guid = None
-        fias_O.__init__(self, guid, None, osmid, parent, conn)
+        self._osmkind = None
         self.setkind(kind)
         self._parent = parent
         self._stat={}
@@ -127,26 +152,28 @@ class fias_AO(fias_O):
             return u'территория'
 
     def getFiasData(self):
-        cur = self.conn.cursor()
+        #cur = self.conn.cursor()
         if self.guid:
-            cur.execute('SELECT parentguid, updatedate, postalcode, code, okato, oktmo, offname, formalname, shortname, aolevel FROM fias_addr_obj WHERE aoguid=%s',(self.guid,))
-            firow=cur.fetchone()
+            #cur.execute('SELECT parentguid, updatedate, postalcode, code, okato, oktmo, offname, formalname, shortname, aolevel FROM fias_addr_obj WHERE aoguid=%s',(self.guid,))
+            #firow=cur.fetchone()
+            self._fias = self.session.query(Addrobj).get(self.guid)
         else:
-            firow=[None,None,None,None,None,None,None,None,None,None]
-        if firow:
-            self._parent=firow[0]
-            self._fias={}
-            self._fias['updatedate']=firow[1]
-            self._fias['postalcode']=firow[2]
-            self._fias['kladr']=firow[3]
-            self._fias['okato']=firow[4]
-            self._fias['oktmo']=firow[5]
-            self._offname=firow[6]
-            self._formalname=firow[7]
-            self._shortname=firow[8]
-            self._aolevel=firow[9]
-        else:
-            self._fias = None
+            #firow=[None,None,None,None,None,None,None,None,None,None]
+            self._fias = Addrobj({'formalname': 'Россия'})
+        if True:  # firow:
+            self._parent = self._fias.parentguid  # firow[0]
+            #self._fias={}
+            #self._fias['updatedate']=firow[1]
+            #self._fias['postalcode']=firow[2]
+            #self._fias['kladr']=firow[3]
+            #self._fias['okato']=firow[4]
+            #self._fias['oktmo']=firow[5]
+            self._offname = self._fias.offname  # firow[6]
+            self._formalname = self._fias.formalname  # firow[7]
+            self._shortname = self._fias.shortname  # firow[8]
+            self._aolevel = self._fias.aolevel  # firow[9]
+        #else:
+        #    self._fias = None
 
     @property
     def fias(self):
@@ -159,18 +186,21 @@ class fias_AO(fias_O):
         if not hasattr(self,'_offname'):
             self.getFiasData()
         return self._offname
+        #return self.fias.offname
 
     @property
     def formalname(self):
         if not hasattr(self,'_formalname'):
             self.getFiasData()
         return self._formalname
+        #return self.fias.formalname
 
     @property
     def shortname(self):
         if not hasattr(self,'_shortname'):
             self.getFiasData()
         return self._shortname
+        #return self.fias.shortname
 
     @property
     def fullname(self):
@@ -204,8 +234,14 @@ class fias_AO(fias_O):
         if not hasattr(self,'_parentO'):
             if self._parent == None:
                 self.getFiasData()
-            self._parentO=fias_AO(self._parent)
+            self._parentO = fias_AO(self._parent)
         return self._parentO
+
+    @property
+    def parentguid(self):
+        if self._parent == None:
+            self.getFiasData()
+        return self._parent
 
     @property
     def isok(self):
@@ -236,18 +272,18 @@ class fias_AO(fias_O):
                 self._stat[typ] = 0
                 return
             #all building children are easily available from all_b
-            if hasattr(self, '_subO'):
+            if hasattr(self, 'subO'):
                 self._stat[typ] = len(self.subO(typ))
                 return
             #if not node
             if typ=='all_b':
-                cur.execute("SELECT count(distinct(houseguid)) FROM fias_house WHERE aoguid=%s", (self.guid,))
+                cur.execute("SELECT count(distinct(f_id)) FROM fias_house WHERE aoguid=%s", (self.guid,))
                 self._stat['all_b'] = cur.fetchone()[0]
             elif typ=='found_b':
                 if self.stat('all_b') == 0 or self.kind == 0:
                     self._stat['found_b']=0
                 else:
-                    cur.execute("SELECT count(distinct(f.houseguid)) FROM fias_house f, " + prefix + bld_aso_tbl + " o WHERE f.aoguid=%s AND f.houseguid=o.aoguid",(self.guid,))
+                    cur.execute("SELECT count(distinct(f.f_id)) FROM fias_house f, " + prefix + bld_aso_tbl + " o WHERE f.aoguid=%s AND f.f_id=o.f_id",(self.guid,))
                     self._stat['found_b'] = cur.fetchone()[0]
 
     def CalcRecStat(self, typ, savemode=1):
@@ -328,12 +364,8 @@ class fias_AO(fias_O):
         br = ('all_b_r' in stat) and ('found_b_r' in stat)
         f = mode == 2 and a and b and ar and br
         self._stat = {}
-        if stat_conn == None:
-            stat_conn_ = psycopg2.connect(connstr)
-            stat_conn_.autocommit = False
-        else:
-            stat_conn_ = stat_conn
-        stat_cur = stat_conn_.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        #self.conn.autocommit = False
+        stat_cur = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         stat_cur.execute('SELECT * FROM fiosm_stat WHERE aoguid=%s', (self.guid,))
         row = stat_cur.fetchone()
         if row:
@@ -360,7 +392,8 @@ class fias_AO(fias_O):
             if stat['all_b_r'] != self._stat.get('all_b_r') or stat['found_b_r'] != self._stat.get('found_b_r'):
                 stat_cur.execute('UPDATE fiosm_stat SET all_b_r=%(all_b_r)s, found_b_r=%(found_b_r)s WHERE aoguid = %(guid)s', stat)
 
-        stat_conn_.commit()
+        #self.conn.commit()
+        #self.conn.autocommit = True
         del stat['guid']
         self._stat = stat
 
@@ -423,108 +456,6 @@ class fias_AO(fias_O):
         return self._geom
 
 
-class fias_HO(fias_O):
-    def __init__(self, guid=None, osmid=None, osmkind=None, conn=None):
-        fias_O.__init__(self, guid, osmkind, osmid, None, conn)
-        if guid == None and (osmid == None or osmkind == None):
-            raise AssertionError()
-        self._fias = {}
-
-        self.parentguid = None
-
-        self.number = None
-        self.build = None
-        self.struc = None
-        self.strtype = None
-
-        self._str = None
-
-    def getguid(self):
-        if self._osmid == None or self._osmkind == None:
-            return
-        cur = self.conn.cursor()
-        cur.execute("SELECT aoguid FROM " + prefix + bld_aso_tbl + " WHERE osm_build=%s AND point=%s " (self._osmid, self._osmkind))
-        res = cur.fetchone()
-        if res:
-            self._guid = res[0]
-
-    @property
-    def guid(self):
-        if self._guid == None:
-            self.getguid()
-        return self._guid
-
-    def getosm(self):
-        if self._guid == None:
-            return
-        cur = self.conn.cursor()
-        cur.execute("SELECT osm_build, point FROM " + prefix + bld_aso_tbl + " WHERE aoguid=%s", (self._guid,))
-        res = cur.fetchone()
-        if res:
-            self._osmid = res[0]
-            self._osmkind = res[1]
-
-    @property
-    def osmid(self):
-        if self._osmid == None:
-            self.getosm()
-        return self._osmid
-
-    @property
-    def osmkind(self):
-        if self._osmkind == None:
-            self.getosm()
-        return self._osmkind
-
-    @property
-    def txtkind(self):
-        if self.osmkind == None:
-            return u'нет в ОСМ'
-        elif self.osmkind == 1:
-            return u'точка'
-        elif self.osmkind == 0:
-            return u'полигон'
-
-    def getfias(self):
-        if self.guid == None:
-            return
-        cur = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cur.execute("SELECT * FROM fias_house WHERE houseguid=%s" (self.guid,))
-        res = cur.fethone()
-        if res:
-            self._fias['parentguid'] = res['aoguid']
-            self._fias['build'] = res['buildnum']
-            self._fias['number'] = res['housenum']
-            self._fias['struc'] = res['strucnum']
-
-    def __getattr__(self, name):
-        if name in ('parentguid', 'build', 'number', 'struc'):
-            if name not in self._fias:
-                self.getfias()
-            self._fias.get(name)
-        else:
-            raise AttributeError
-
-    @property
-    def onestr(self):
-        if self._str == None:
-            self._str = u''
-            if self.number:
-                self._str = self._str + self.number
-            if self.build:
-                self._str = self._str + u' к' + self.build
-            if self.struc:
-                self._str = self._str + u' с' + self.struc
-        return self._str
-
-    @property
-    def name(self):
-        return self.onestr
-
-    def equal_to_str(self, guess):
-        return bool(self.onestr == guess)
-
-
 class fias_AONode(fias_AO):
     def __init__(self, *args, **kwargs):
         if type(args[0]) == fias_AO:
@@ -570,7 +501,7 @@ class fias_AONode(fias_AO):
             return []
         self._subO[typ] = []
         for row in cur.fetchall():
-            el = fias_AO(row[0], kind, row[osmid] if osmid else None, self.guid, self.conn)
+            el = fias_AO(row[0], kind, row[osmid] if osmid else None, self.guid, self.conn, self.session)
             el._formalname = row['formalname']
             el._offname = row['offname']
             el._shortname = row['shortname']
@@ -596,21 +527,13 @@ class fias_AONode(fias_AO):
             return res
 
         if typ == 'all_b':
-            cur = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-            cur.execute("SELECT o.osm_build, o.point, f.* FROM fias_house f LEFT JOIN " + prefix + bld_aso_tbl + " o ON f.houseguid=o.aoguid WHERE f.aoguid=%s", (self.guid,))
-            self._subO[typ] = []
-            for row in cur.fetchall():
-                el = fias_HO(row['houseguid'], row[0], row[1], self.conn)
-                el.build = row['buildnum']
-                el.number = row['housenum']
-                el.struc = row['strucnum']
-                self._subO[typ].append(el)
+            self._subO[typ] = self.session.query(House).filter_by(aoguid=self.guid).all()
             return self._subO[typ]
 
         if typ == 'found_b':
-            return filter(lambda h: h.osmid, self.subO('all_b'))
+            return filter(lambda h: h.osm is not None, self.subO('all_b'))
         elif typ == 'not found_b':
-            return filter(lambda h: h.osmid == None, self.subO('all_b'))
+            return filter(lambda h: h.osm is None, self.subO('all_b'))
 
     def child_found(self, child, typ):
         if 'not found' in self._subO:

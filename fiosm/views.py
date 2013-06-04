@@ -57,7 +57,7 @@ def found_view(request):
             return request.route_url('details', guid=self.guid, kind='ao')
         elif typ_l == 'top':
             if self.parent.guid:
-                return request.route_url('found0', guid=self.parent.guid, typ='all')
+                return request.route_url('found0', guid=self.parentguid, typ='all')
             else:
                 return request.route_url('foundroot0', typ='all')
         elif typ_l == "prev":

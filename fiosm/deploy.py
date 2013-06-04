@@ -6,6 +6,7 @@ Created on 01.04.2013
 from config import *
 import psycopg2
 conn = psycopg2.connect(connstr)
+conn.autocommit = True
 cur = conn.cursor()
 from argparse import ArgumentParser
 
@@ -132,7 +133,7 @@ def AssocTableReCreate():
 
 def AssocBTableReCreate():
     cur.execute("DROP TABLE IF EXISTS " + prefix + bld_aso_tbl)
-    cur.execute("CREATE TABLE " + prefix + bld_aso_tbl + "(aoguid      UUID,  osm_build   bigint, point smallint);")
+    cur.execute("CREATE TABLE " + prefix + bld_aso_tbl + "(f_id  int,  osm_build   bigint, point smallint);")
 
 
 def AssocIdxCreate():

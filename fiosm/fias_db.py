@@ -1,11 +1,13 @@
+# -*- coding: UTF-8 -*-
 '''
 Created on 18.05.2013
 
 @author: scond_000
 '''
-from sqlalchemy import Sequence, Column, Integer, BigInteger, SmallInteger, String, Date
+from sqlalchemy import Sequence, Column, Integer, BigInteger, SmallInteger, String, Date, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import deferred
 Base = declarative_base()
 
 
@@ -37,13 +39,13 @@ class Normdoc(FiasRow, Base):
     docimgid = Column(Integer)
 
 
-class Addrobj(FiasRow, Base):
-    __tablename__ = 'fias_addr_obj'
-    aoguid = Column(UUID, primary_key=True)
-    parentguid = Column(UUID, index=True)
-    aoid = Column(UUID)
+class AddrobjFuture(FiasRow, Base):
+    __tablename__ = 'fias_addr_obj_future'
+    aoguid = Column(UUID, primary_key=False)
+    parentguid = Column(UUID, index=False)
+    aoid = Column(UUID, primary_key=True)
     previd = Column(UUID)
-    #nextid = Column(UUID)  #=None
+    nextid = Column(UUID)
     startdate = Column(Date)
     enddate = Column(Date)
 
@@ -78,11 +80,55 @@ class Addrobj(FiasRow, Base):
     operstatus = Column(SmallInteger)
     currstatus = Column(SmallInteger)
     normdoc = Column(Integer)
-    #livestatus = Column(Boolean)  #=True
+    livestatus = Column(Boolean)
 
 
-class House(FiasRow, Base):
-    __tablename__ = 'fias_house'
+class Addrobj(FiasRow, Base):
+    __tablename__ = 'fias_addr_obj'
+    aoguid = Column(UUID, primary_key=True)
+    parentguid = Column(UUID, index=True)
+    aoid = deferred(Column(UUID))
+    previd = deferred(Column(UUID))
+    nextid = deferred(Column(UUID))
+    startdate = deferred(Column(Date))
+    enddate = deferred(Column(Date))
+
+    formalname = Column(String(120))
+    offname = Column(String(120))
+    shortname = Column(String(10))
+    aolevel = Column(SmallInteger)
+    postalcode = Column(Integer)
+    #KLADE
+    regioncode = deferred(Column(String(2)))
+    autocode = deferred(Column(String(1)))
+    areacode = deferred(Column(String(3)))
+    citycode = deferred(Column(String(3)))
+    ctarcode = deferred(Column(String(3)))
+    placecode = deferred(Column(String(3)))
+    streetcode = deferred(Column(String(4)))
+    extrcode = deferred(Column(String(4)))
+    sextcode = deferred(Column(String(3)))
+    #KLADR
+    code = deferred(Column(String(17)))
+    plaincode = deferred(Column(String(15)))
+    #NALOG
+    ifnsfl = deferred(Column(SmallInteger))
+    terrifnsfl = deferred(Column(SmallInteger))
+    ifnsul = deferred(Column(SmallInteger))
+    terrifnsul = deferred(Column(SmallInteger))
+    okato = deferred(Column(BigInteger))
+    oktmo = deferred(Column(Integer))
+    updatedate = deferred(Column(Date))
+    actstatus = deferred(Column(SmallInteger))
+    centstatus = deferred(Column(SmallInteger))
+    operstatus = deferred(Column(SmallInteger))
+    currstatus = deferred(Column(SmallInteger))
+    normdoc = deferred(Column(Integer))
+    livestatus = deferred(Column(Boolean))
+
+
+class HouseFuture(FiasRow, Base):
+    __tablename__ = 'fias_house_future'
     postalcode = Column(Integer)
     ifnsfl = Column(SmallInteger)
     terrifnsfl = Column(SmallInteger)
@@ -96,13 +142,61 @@ class House(FiasRow, Base):
     buildnum = Column(String(10))
     strucnum = Column(String(10))
     strstatus = Column(SmallInteger)
-    houseguid = Column(UUID, primary_key=True)
-    houseid = Column(UUID)
+    houseguid = Column(UUID(as_uuid=True))
+    houseid = Column(UUID, primary_key=True)
     aoguid = Column(UUID, index=False)
     startdate = Column(Date)
     enddate = Column(Date)
     statstatus = Column(SmallInteger)
     normdoc = Column(Integer)
+
+
+class HouseFMeta(FiasRow, Base):
+    __tablename__ = 'fias_house_meta'
+    houseguid = Column(UUID(as_uuid=True), primary_key=True)
+    houseid = Column(UUID)
+    startdate = Column(Date)
+    enddate = Column(Date)
+    id = Column(Integer)
+
+
+class House(FiasRow, Base):
+    __tablename__ = 'fias_house'
+    f_id = Column(Integer, primary_key=True)
+    postalcode = deferred(Column(Integer))
+    ifnsfl = deferred(Column(SmallInteger))
+    terrifnsfl = deferred(Column(SmallInteger))
+    ifnsul = deferred(Column(SmallInteger))
+    terrifnsul = deferred(Column(SmallInteger))
+    okato = deferred(Column(BigInteger))
+    oktmo = deferred(Column(Integer))
+    updatedate = deferred(Column(Date))
+    housenum = Column(String(20))
+    eststatus = Column(SmallInteger)
+    buildnum = Column(String(10))
+    strucnum = Column(String(10))
+    strstatus = Column(SmallInteger)
+    aoguid = Column(UUID, index=False)
+    statstatus = Column(SmallInteger)
+    normdoc = deferred(Column(Integer))
+
+    @property
+    def onestr(self):
+        _str = u''
+        if self.housenum:
+            _str = _str + self.housenum + u' '
+        if self.buildnum:
+            _str = _str + u'к' + self.buildnum + u' '
+        if self.strucnum:
+            _str = _str + u'с' + self.strucnum + u' '
+        return _str[:-1]
+
+    @property
+    def name(self):
+        return self.onestr
+
+    def equal_to_str(self, guess):
+        return bool(self.onestr == guess)
 
 
 class Versions(Base):
