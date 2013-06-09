@@ -37,9 +37,14 @@ class FiasFiles(object):
                 if fias_list_raw and 'GetAllDownloadFileInfoResult' in fias_list_raw:
                     for it in fias_list_raw['GetAllDownloadFileInfoResult']:
                         one = it['DownloadFileInfo']
-                        ver = one['VersionId']
+                        ver = session.query(fias_db.Versions).get(one['VersionId'])
+                        if ver is None:
+                            ver = fias_db.Versions(one['VersionId'])
+                            session.add(ver)
+                        ver.dumpdate = datetime.datetime.strptime(one['TextVersion'][-10:], "%d.%m.%Y").date()
                         del one['VersionId']
-                        self.fias_list[ver] = one
+                        self.fias_list[ver.ver] = one
+                    session.commit()
             except:
                 pass
         return cls.instance
@@ -51,13 +56,25 @@ class FiasFiles(object):
         if self.full_file == None or not exists(self.full_file):
             urlretrieve(self.fias_list[self.maxver()]['FiasCompleteXmlUrl'], self.full_file)
             self.full_ver = self.maxver()
-            # TODO: Get GUID, date and save version
 
     def get_fullfile(self, table):
         self.get_fullarch()
         arch = rarfile.RarFile(self.full_file)
         for filename in arch.namelist():
             if filename[3:].lower().startswith(table + '_'):
+                fdate = datetime.datetime.strptime(filename.split("_")[2], "%Y%m%d").date()
+                if self.full_ver is None:
+                    rec = session.query(fias_db.Versions).filter_by(date=fdate).one()
+                    if rec is None:
+                        self.full_ver = 0  # TODO: search by dumpdate
+                    else:
+                        self.full_ver = rec.ver
+                else:
+                    try:
+                        rec = session.query(fias_db.Versions).get(self.full_ver)
+                        rec.date = fdate
+                    except:
+                        pass
                 return (arch.open(filename), self.full_ver)
 
     def get_updfile(self, table, ver):
@@ -65,6 +82,12 @@ class FiasFiles(object):
         arch = rarfile.RarFile(archfile)
         for filename in arch.namelist():
             if filename.lower().beginswith(table):
+                #Get and save date
+                try:
+                    rec = session.query(fias_db.Versions).get(ver)
+                    rec.date = datetime.datetime.strptime(filename.split("_")[3], "%Y%m%d").date()
+                except:
+                    pass
                 return arch.open(filename)
 
     def __del__(self):

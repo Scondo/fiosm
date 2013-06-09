@@ -203,6 +203,10 @@ class Versions(Base):
     __tablename__ = "fias_versions"
     ver = Column(Integer, primary_key=True)
     date = Column(Date)
+    dumpdate = Column(Date)
+
+    def __init__(self, ver):
+        self.ver = ver
 
 
 class TableStatus(Base):
