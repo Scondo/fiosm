@@ -26,17 +26,62 @@ typ_cond = {'all': '',
          }
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, relationship, backref
+from sqlalchemy.orm import sessionmaker, relationship, backref, joinedload, join
 from sqlalchemy import ForeignKey, Column, Integer, BigInteger, SmallInteger
-from fias_db import Base, House, Addrobj
+from fias_db import Base, Socrbase, House, Addrobj, UUID
+
+
+class Statistic(Base):
+    __tablename__ = 'fiosm_stat'
+    aoguid = Column(UUID, ForeignKey("fias_addr_obj.aoguid"), primary_key=True)
+    ao_all = Column(Integer)
+    found = Column(Integer)
+    street = Column(Integer)
+    all_b = Column(Integer)
+    found_b = Column(Integer)
+    all_r = Column(Integer)
+    found_r = Column(Integer)
+    street_r = Column(Integer)
+    all_b_r = Column(Integer)
+    found_b_r = Column(Integer)
+    fias = relationship("Addrobj", backref=backref("stat", uselist=False), uselist=False)
+
+    def fromdic(self, dic):
+        for it in dic.iteritems():
+            setattr(self, 'ao_all' if it[0] == 'all' else it[0], it[1])
+
+    def __init__(self, dic):
+        self.fromdic(dic)
+
+
+class PlaceAssoc(Base):
+    __tablename__ = prefix + pl_aso_tbl
+    aoguid = Column(UUID, ForeignKey("fias_addr_obj.aoguid"), primary_key=True)
+    osm_admin = Column(BigInteger)
+    fias = relationship("Addrobj", backref=backref("place", uselist=False), uselist=False)
+
+    def __init__(self, guid, osmid):
+        self.aoguid = guid
+        self.osm_admin = osmid
+
+
+class StreetAssoc(Base):
+    __tablename__ = prefix + way_aso_tbl
+    aoguid = Column(UUID, ForeignKey("fias_addr_obj.aoguid"), primary_key=True)
+    osm_way = Column(BigInteger, primary_key=True)
+    fias = relationship("Addrobj", backref=backref("street"), uselist=False)
+
+    def __init__(self, guid, osmid):
+        self.aoguid = guid
+        self.osm_way = osmid
 
 
 class BuildAssoc(Base):
     __tablename__ = prefix + bld_aso_tbl
-    f_id = Column(Integer, ForeignKey("fias_house.f_id"))
-    osm_build = Column(BigInteger, primary_key=True)
-    point = Column(SmallInteger, primary_key=True)
-    fias = relationship("House", backref=backref("osm", uselist=False), uselist=False, lazy='joined')
+    f_id = Column(Integer, ForeignKey("fias_house.f_id"), primary_key=True)
+    osm_build = Column(BigInteger)
+    point = Column(SmallInteger)
+    fias = relationship("House", backref=backref("osm", uselist=False, lazy=False), uselist=False, lazy='joined')
 
 
 def HouseTXTKind(self):
@@ -96,26 +141,23 @@ class fias_AO(object):
         return self._guid
 
     def calkind(self):
-        cur = self.conn.cursor()
         #'found'
-        cur.execute('SELECT osm_admin FROM '+prefix+pl_aso_tbl+' WHERE aoguid=%s',(self.guid,))
-        cid=cur.fetchone()
-        if cid:
-            self._osmid=cid[0]
-            self._kind=2
+        cid = self.fias.place
+        if cid is not None:
+            self._osmid = cid.osm_admin
+            self._kind = 2
             return 2
         #'street':
-        cur.execute('SELECT osm_way FROM '+prefix+way_aso_tbl+' WHERE aoguid=%s',(self.guid,))
-        cid=cur.fetchone()
+        cid = self.fias.street
         if cid:
-            self._osmid=cid[0]
-            self._kind=1
+            self._osmid = cid[0].osm_way
+            self._kind = 1
         else:
-            self._kind=0
+            self._kind = 0
 
     def getkind(self):
-        if self.guid==None:
-            return 2    
+        if self.guid is None:
+            return 2
         if self._kind == None:
             self.calkind()
         return self._kind
@@ -132,11 +174,8 @@ class fias_AO(object):
                 self._kind=None
         else:
             self._kind=kind
-            
-    def delkind(self):
-        self._kind = None
 
-    kind = property(getkind, setkind, delkind, '''Basic type of object
+    kind = property(getkind, setkind, doc='''Basic type of object
         0-not found
         1-street
         2-found as area
@@ -152,28 +191,16 @@ class fias_AO(object):
             return u'территория'
 
     def getFiasData(self):
-        #cur = self.conn.cursor()
         if self.guid:
-            #cur.execute('SELECT parentguid, updatedate, postalcode, code, okato, oktmo, offname, formalname, shortname, aolevel FROM fias_addr_obj WHERE aoguid=%s',(self.guid,))
-            #firow=cur.fetchone()
             self._fias = self.session.query(Addrobj).get(self.guid)
         else:
-            #firow=[None,None,None,None,None,None,None,None,None,None]
             self._fias = Addrobj({'formalname': 'Россия'})
-        if True:  # firow:
+        if True:
             self._parent = self._fias.parentguid  # firow[0]
-            #self._fias={}
-            #self._fias['updatedate']=firow[1]
-            #self._fias['postalcode']=firow[2]
-            #self._fias['kladr']=firow[3]
-            #self._fias['okato']=firow[4]
-            #self._fias['oktmo']=firow[5]
             self._offname = self._fias.offname  # firow[6]
             self._formalname = self._fias.formalname  # firow[7]
             self._shortname = self._fias.shortname  # firow[8]
             self._aolevel = self._fias.aolevel  # firow[9]
-        #else:
-        #    self._fias = None
 
     @property
     def fias(self):
@@ -206,12 +233,9 @@ class fias_AO(object):
     def fullname(self):
         key=u"#".join((self._shortname,str(self._aolevel)))
         if key not in socr_cache:
-            cur = self.conn.cursor()
-            cur.execute("""SELECT lower(socrname) FROM fias_socr_obj s
-            WHERE scname=%s AND level=%s """, (self._shortname, self._aolevel))
-            res = cur.fetchone()
+            res = self.session.query(Socrbase).filter_by(scname=self._shortname, level=self._aolevel).first()
             if res:
-                socr_cache[key] = res[0]
+                socr_cache[key] = res.socrname.lower()
             else:
                 socr_cache[key] = ""
         return socr_cache[key]
@@ -288,11 +312,11 @@ class fias_AO(object):
 
     def CalcRecStat(self, typ, savemode=1):
         res = self.stat(typ[:-2])
-        for ao in self.subAO('found'):
+        for ao in self.subO('found'):
             res += fias_AONode(ao).stat(typ, savemode)
-        for ao in self.subAO('street'):
+        for ao in self.subO('street'):
             res += ao.stat(typ[:-2])
-        for ao in self.subAO('not found'):
+        for ao in self.subO('not found'):
             res += fias_AONode(ao).stat(typ, savemode)
         self._stat[typ] = res
 
@@ -316,6 +340,19 @@ class fias_AO(object):
             if value != None:
                 self._stat[item + '_r'] = value
 
+    def pullstatA(self):
+        '''Pull stat info from statistic obj'''
+        stat = self.fias.stat
+        if stat is None:
+            return
+        for item in ('all', 'found', 'street', 'all_b', 'found_b'):
+            value = getattr(stat, item if item != 'all' else 'ao_all')
+            if value != None:
+                self._stat[item] = value
+            value = getattr(stat, item + '_r')
+            if value != None:
+                self._stat[item + '_r'] = value
+
     def stat(self, typ, savemode=0):
         '''Statistic of childs for item'''
         #Calculable values
@@ -336,7 +373,7 @@ class fias_AO(object):
             return 0
         #Try to pull saved stat
         if not (typ in self._stat) and self.guid != None:
-            self.pullstat()
+            self.pullstatA()
         #If still no stat - calculate
         if typ not in self._stat:
             if r:
@@ -356,46 +393,28 @@ class fias_AO(object):
         '''
         if self.guid == None:
             return
-        stat = copy.copy(self._stat)
-        stat['guid'] = self.guid
+        stat = self._stat
         a = ('all' in stat) and ('found' in stat) and ('street' in stat)
         b = ('all_b' in stat) and ('found_b' in stat)
         ar = ('all_r' in stat) and ('found_r' in stat) and ('street_r' in stat)
         br = ('all_b_r' in stat) and ('found_b_r' in stat)
         f = mode == 2 and a and b and ar and br
-        self._stat = {}
-        #self.conn.autocommit = False
-        stat_cur = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        stat_cur.execute('SELECT * FROM fiosm_stat WHERE aoguid=%s', (self.guid,))
-        row = stat_cur.fetchone()
-        if row:
-            self.pullstat(row)
-        elif a or b or ar or br:
-            stat_cur.execute('INSERT INTO fiosm_stat (aoguid) VALUES (%s)', (self.guid,))
-        else:
-            del stat['guid']
-            self._stat = stat
-            return
-
+        statR = self.session.query(Statistic).get(self.guid)
+        if statR is None:
+            if a or b or ar or br:
+                statR = Statistic({"aoguid": self.guid})
+                self.session.add(statR)
+            else:
+                return
         if (mode == 0 and a) or (mode == 1 and a and b) or f:
-            if stat['all'] != self._stat.get('all') or stat['found'] != self._stat.get('found') or stat['street'] != self._stat.get('street'):
-                stat_cur.execute('UPDATE fiosm_stat SET ao_all=%(all)s, found=%(found)s, street=%(street)s WHERE aoguid = %(guid)s', stat)
+            statR.fromdic(stat)
         if (mode == 0 and b) or (mode == 1 and a and b) or f:
-            if stat['all_b'] != self._stat.get('all_b') or stat['found_b'] != self._stat.get('found_b'):
-                stat_cur.execute('UPDATE fiosm_stat SET all_b=%(all_b)s, found_b=%(found_b)s WHERE aoguid = %(guid)s', stat)
-
+            statR.fromdic(stat)
         if (mode == 0 and ar) or (mode == 1 and ar and br) or f:
-            if stat['all_r'] != self._stat.get('all_r') or stat['found_r'] != self._stat.get('found_r') or stat['street_r'] != self._stat.get('street_r'):
-                stat_cur.execute('UPDATE fiosm_stat SET all_r=%(all_r)s, found_r=%(found_r)s, street_r=%(street_r)s WHERE aoguid = %(guid)s', stat)
-
+            statR.fromdic(stat)
         if (mode == 0 and br) or (mode == 1 and ar and br) or f:
-            if stat['all_b_r'] != self._stat.get('all_b_r') or stat['found_b_r'] != self._stat.get('found_b_r'):
-                stat_cur.execute('UPDATE fiosm_stat SET all_b_r=%(all_b_r)s, found_b_r=%(found_b_r)s WHERE aoguid = %(guid)s', stat)
-
-        #self.conn.commit()
-        #self.conn.autocommit = True
-        del stat['guid']
-        self._stat = stat
+            statR.fromdic(stat)
+        self.session.commit()
 
     @property
     def name(self):
@@ -467,58 +486,27 @@ class fias_AONode(fias_AO):
             fias_AO.__init__(self, *args, **kwargs)
         self._subO = {}
 
-    def subAO(self, typ, need_stat=True):
-        if typ in self._subO:
-            return self._subO[typ]
-
-        #Voids by kind
-        if self.kind != 2 and typ != 'not found':
-            return []
-        cmpop = ' is ' if self.guid == None else ' = '
-        if need_stat:
-            stat_join = "LEFT JOIN fiosm_stat s ON f.aoguid=s.aoguid"
-            stat_sel = ", s.*"
-        else:
-            stat_join = ""
-            stat_sel = ""
-
-        fias_sel = "f.formalname, f.shortname, f.offname, f.aolevel"
-        #make request
-        cur = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        if typ == 'found':
-            osmid = 'osm_admin'
-            cur.execute('SELECT f.aoguid, ' + fias_sel + ', a.' + osmid + ', o.name' + stat_sel + ' FROM fias_addr_obj f INNER JOIN ' + prefix + pl_aso_tbl + ' a ON f.aoguid=a.aoguid INNER JOIN ' + prefix + poly_table + ' o ON a.' + osmid + '=o.osm_id ' + stat_join + ' WHERE parentguid' + cmpop + '%s', (self.guid,))
-            kind = 2
-        elif typ == 'street':
-            kind = 1
-            osmid = 'osm_way'
-            cur.execute('SELECT DISTINCT ON(f.aoguid) f.aoguid,' + fias_sel + ', a.' + osmid + ', o.name' + stat_sel + ' FROM fias_addr_obj f INNER JOIN ' + prefix + way_aso_tbl + ' a ON f.aoguid=a.aoguid INNER JOIN ' + prefix + ways_table + ' o ON a.' + osmid + '=o.osm_id ' + stat_join + ' WHERE parentguid' + cmpop + '%s', (self.guid,))
-        elif typ == 'not found':
-            kind = 0
-            osmid = None
-            cur.execute('SELECT f.aoguid, ' + fias_sel + stat_sel + ' FROM fias_addr_obj f ' + stat_join + ' WHERE NOT(' + typ_cond['found'] + ' OR ' + typ_cond['street'] + ') AND parentguid' + cmpop + '%s', (self.guid,))
-        else:
-            return []
-        self._subO[typ] = []
-        for row in cur.fetchall():
-            el = fias_AO(row[0], kind, row[osmid] if osmid else None, self.guid, self.conn, self.session)
-            el._formalname = row['formalname']
-            el._offname = row['offname']
-            el._shortname = row['shortname']
-            el._aolevel = row['aolevel']
-            el.pullstat(row)
-            if kind:
-                el._name = row['name']
-            self._subO[typ].append(el)
-        return self._subO[typ]
-
-    def subO(self, typ):
+    def subO(self, typ, ao_stat=True):
         '''List of subelements'''
         if typ in self._subO:
             return self._subO[typ]
-
         if typ in ('not found', 'found', 'street'):
-            return self.subAO(typ)
+            q = self.session.query(Addrobj).filter_by(parentguid=self.guid)
+            if ao_stat:
+                q = q.options(joinedload(Addrobj.stat))
+            if typ == 'found':
+                q = q.join(PlaceAssoc)
+            elif typ == 'street':
+                q = q.join(StreetAssoc)
+            elif typ == 'not found':
+                q = q.filter(~Addrobj.street.any(), ~Addrobj.place.has())
+            self._subO[typ] = []
+            for row in q.all():
+                el = fias_AO(row.aoguid, None, None, self.guid, self.conn, self.session)
+                el._fias = row
+                #    el._name = row['name']  # TODO :OSM name!
+                self._subO[typ].append(el)
+            return self._subO[typ]
         if typ == 'all':
             res = []
             res.extend(self.subO('found'))

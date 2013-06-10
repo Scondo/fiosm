@@ -13,19 +13,19 @@
 	<tr><td colspan=2>${name}</td></tr>
 	<tr>
 	<td>Почтовый индекс:</td>
-	<td>${fias['postalcode']}</td>
+	<td>${fias.postalcode}</td>
 	</tr>
 	<tr>
 	<td>Код КЛАДР:</td>
-	<td>${fias['kladr']}</td>
+	<td>${fias.code}</td>
 	</tr>
 		<tr>
 	<td>Код ОКАТО:</td>
-	<td>${fias['okato']}</td>
+	<td>${fias.okato}</td>
 	</tr>
 	<tr>
 	<td>Код ОКМТО:</td>
-	<td>${fias['oktmo']}</td>
+	<td>${fias.oktmo}</td>
 	</tr>
 	<tr><td colspan=2><a href="${statlink}">Статистика сопоставления</a></td></tr>
 	</table>

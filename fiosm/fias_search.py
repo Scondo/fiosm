@@ -131,10 +131,8 @@ def AssocBuild(elem, point):
     #Filtering of found is optimisation for updating and also remove POI with address
     #found_pre = set([h.onestr for h in elem.subO('found_b')])
     #osm_h = filter(lambda it: it[1] not in found_pre, osm_h)
-    houses = None
+    houses = elem.subO('not found_b')
     for hid, number in osm_h:
-        if houses is None:
-            houses = elem.subO('not found_b')
         for house in houses:
             if house.equal_to_str(number):
                 assoc = melt.BuildAssoc()
@@ -157,40 +155,38 @@ def AssociateO(elem):
         return
     AssocBuild(elem, 0)
     AssocBuild(elem, 1)
-    elem.session.commit()
-    cur = elem.conn.cursor()
     #run processing for found to parse their subs
-    for sub in tuple(elem.subAO('found', False)):
+    for sub in tuple(elem.subO('found', False)):
         AssociateO(melt.fias_AONode(sub))
     #find new elements for street if any
-    for sub in tuple(elem.subAO('street', False)):
+    for sub in tuple(elem.subO('street', False)):
         sub_ = melt.fias_AONode(sub)
         streets=FindAssocStreet(sub_,elem.geom)
         if streets<>None:
-            elem.conn.autocommit = False
+            pre = elem.session.query(melt.StreetAssoc).filter_by(aoguid=sub.guid).all()
+            pre = set([it.osm_way for it in pre])
             for street in streets:
-                cur.execute("SELECT osm_way FROM "+prefix+way_aso_tbl+" WHERE osm_way=%s",(street,))
-                if not cur.fetchone():
-                    cur.execute("INSERT INTO " +  prefix+way_aso_tbl + " (aoguid,osm_way) VALUES (%s, %s)", (sub.guid, street))
-            elem.conn.commit()
-            elem.conn.autocommit = True
+                if street not in pre:
+                    assoc = melt.StreetAssoc(sub.guid, street)
+                    elem.session.add(assoc)
+            elem.session.commit()
             AssociateO(sub_)
     #search for new elements
     subareas = Subareas(elem)
-    for sub in tuple(elem.subAO('not found', False)):
+    for sub in tuple(elem.subO('not found', False)):
         sub_ = melt.fias_AONode(sub)
         adm_id=None
         if subareas and sub_.fullname not in way_only:
             for name in sub_.names():
-                adm_id=subareas.get(name)
-                if adm_id:
-                    del subareas[name]
+                if name in subareas:
+                    adm_id = subareas.pop(name)
                     break
 
         if adm_id == None and sub_.fullname not in way_only:
             adm_id=FindAssocPlace(sub_,elem.geom)
         if not adm_id==None:
-            cur.execute("INSERT INTO " + prefix + pl_aso_tbl + " (aoguid,osm_admin) VALUES (%s, %s)", (sub.guid, adm_id))
+            assoc = melt.PlaceAssoc(sub.guid, adm_id)
+            elem.session.add(assoc)
             elem.child_found(sub, 'found')
             sub_.osmid = adm_id
             sub_.kind = 2
@@ -198,15 +194,15 @@ def AssociateO(elem):
         elif sub_.fullname not in pl_only:
             streets=FindAssocStreet(sub_,elem.geom)
             if streets<>None:
-                elem.conn.autocommit = False
                 for street in streets:
-                    cur.execute("INSERT INTO " + prefix + way_aso_tbl + " (aoguid,osm_way) VALUES (%s, %s)", (sub.guid, street))
-                elem.conn.commit()
-                elem.conn.autocommit = True
+                    assoc = melt.StreetAssoc(sub.guid, street)
+                    elem.session.add(assoc)
+                elem.session.commit()
                 elem.child_found(sub, 'street')
                 sub_.kind = 1
                 sub_.osmid = streets[0]
                 AssociateO(sub_)
+    elem.session.commit()
     #elem.stat('not found')
     #elem.stat('not found_b')
 
@@ -216,12 +212,14 @@ def AssocRegion(guid):
     if not region.kind:
         adm_id = FindAssocPlace(region, None)
         if adm_id != None:
-            cur = region.conn.cursor()
-            cur.execute("INSERT INTO " + prefix + pl_aso_tbl + " (aoguid,osm_admin) VALUES (%s, %s)", (guid, adm_id))
+            assoc = melt.PlaceAssoc(guid, adm_id)
+            region.session.add(assoc)
+            region.session.commit()
             region = melt.fias_AONode(guid, 2, adm_id)
 
     AssociateO(region)
-    print ":".join((region.name, str(region.kind)))
+    region.session.commit()
+    return ":".join((region.name, str(region.kind)))
 
 
 def fedobj():
@@ -234,8 +232,9 @@ def fedobj():
 def AssORoot():
     '''Associate and process federal subject (they have no parent id and no parent geom)
     '''
+    print "Here we go!"
     for sub in fedobj():
-        AssocRegion(sub)
+        print AssocRegion(sub)
 
 
 def AssORootM():
@@ -249,7 +248,7 @@ def AssORootM():
 
     while results:
         result = results.pop(0)
-        result.get()
+        print result.get()
         print len(results)
 
 
@@ -259,5 +258,5 @@ if __name__=="__main__":
     AssocBTableReCreate()
 #    AssocTriggersReCreate()
     StatTableReCreate()
-    AssORootM()
+    AssORoot()
     AssocIdxCreate()
