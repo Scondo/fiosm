@@ -4,10 +4,12 @@ Created on 18.05.2013
 
 @author: scond_000
 '''
-from sqlalchemy import Sequence, Column, Integer, BigInteger, SmallInteger, String, Date, Boolean
+from sqlalchemy import Integer, BigInteger, SmallInteger, String, Date, Boolean
+from sqlalchemy import Sequence, Column, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import deferred
+from sqlalchemy.orm import deferred, relationship
+from datetime import date
 Base = declarative_base()
 
 
@@ -39,65 +41,23 @@ class Normdoc(FiasRow, Base):
     docimgid = Column(Integer)
 
 
-class AddrobjFuture(FiasRow, Base):
-    __tablename__ = 'fias_addr_obj_future'
-    aoguid = Column(UUID, primary_key=False)
-    parentguid = Column(UUID, index=False)
-    aoid = Column(UUID, primary_key=True)
-    previd = Column(UUID)
-    nextid = Column(UUID)
-    startdate = Column(Date)
-    enddate = Column(Date)
-
-    formalname = Column(String(120))
-    offname = Column(String(120))
-    shortname = Column(String(10))
-    aolevel = Column(SmallInteger)
-    postalcode = Column(Integer)
-    #KLADE
-    regioncode = Column(String(2))
-    autocode = Column(String(1))
-    areacode = Column(String(3))
-    citycode = Column(String(3))
-    ctarcode = Column(String(3))
-    placecode = Column(String(3))
-    streetcode = Column(String(4))
-    extrcode = Column(String(4))
-    sextcode = Column(String(3))
-    #KLADR
-    code = Column(String(17))
-    plaincode = Column(String(15))
-    #NALOG
-    ifnsfl = Column(SmallInteger)
-    terrifnsfl = Column(SmallInteger)
-    ifnsul = Column(SmallInteger)
-    terrifnsul = Column(SmallInteger)
-    okato = Column(BigInteger)
-    oktmo = Column(Integer)
-    updatedate = Column(Date)
-    actstatus = Column(SmallInteger)
-    centstatus = Column(SmallInteger)
-    operstatus = Column(SmallInteger)
-    currstatus = Column(SmallInteger)
-    normdoc = Column(Integer)
-    livestatus = Column(Boolean)
-
-
 class Addrobj(FiasRow, Base):
     __tablename__ = 'fias_addr_obj'
-    aoguid = Column(UUID, primary_key=True)
-    parentguid = Column(UUID, index=True)
+    aoguid = Column(UUID(as_uuid=True))
+    id = Column(Integer, primary_key=True)
+    parentid = Column(Integer, ForeignKey('fias_addr_obj.id'), index=True)
+    parent = relationship("Addrobj", remote_side=[id], uselist=False)
     aoid = deferred(Column(UUID))
     previd = deferred(Column(UUID))
     nextid = deferred(Column(UUID))
-    startdate = deferred(Column(Date))
-    enddate = deferred(Column(Date))
+    startdate = deferred(Column(Date, default=date(1900, 1, 1)))
+    enddate = deferred(Column(Date, default=date(2100, 1, 1)))
 
     formalname = Column(String(120))
     offname = Column(String(120))
     shortname = Column(String(10))
     aolevel = Column(SmallInteger)
-    postalcode = Column(Integer)
+    postalcode = deferred(Column(Integer))
     #KLADE
     regioncode = deferred(Column(String(2)))
     autocode = deferred(Column(String(1)))
@@ -109,7 +69,7 @@ class Addrobj(FiasRow, Base):
     extrcode = deferred(Column(String(4)))
     sextcode = deferred(Column(String(3)))
     #KLADR
-    code = deferred(Column(String(17)))
+    code = Column(String(17))
     plaincode = deferred(Column(String(15)))
     #NALOG
     ifnsfl = deferred(Column(SmallInteger))
@@ -124,7 +84,7 @@ class Addrobj(FiasRow, Base):
     operstatus = deferred(Column(SmallInteger))
     currstatus = deferred(Column(SmallInteger))
     normdoc = deferred(Column(Integer))
-    livestatus = deferred(Column(Boolean))
+    livestatus = Column(Boolean)
 
 
 class HouseFuture(FiasRow, Base):
@@ -151,18 +111,14 @@ class HouseFuture(FiasRow, Base):
     normdoc = Column(Integer)
 
 
-class HouseFMeta(FiasRow, Base):
-    __tablename__ = 'fias_house_meta'
+class House(FiasRow, Base):
+    __tablename__ = 'fias_house'
     houseguid = Column(UUID(as_uuid=True), primary_key=True)
     houseid = Column(UUID)
     startdate = Column(Date)
     enddate = Column(Date)
-    id = Column(Integer)
 
-
-class House(FiasRow, Base):
-    __tablename__ = 'fias_house'
-    f_id = Column(Integer, primary_key=True)
+    #f_id = Column(Integer, primary_key=True)
     postalcode = deferred(Column(Integer))
     ifnsfl = deferred(Column(SmallInteger))
     terrifnsfl = deferred(Column(SmallInteger))
@@ -176,7 +132,7 @@ class House(FiasRow, Base):
     buildnum = Column(String(10))
     strucnum = Column(String(10))
     strstatus = Column(SmallInteger)
-    aoguid = Column(UUID, index=False)
+    ao_id = Column(Integer, index=False)
     statstatus = Column(SmallInteger)
     normdoc = deferred(Column(Integer))
 

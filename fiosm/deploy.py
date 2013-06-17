@@ -8,6 +8,10 @@ import psycopg2
 conn = psycopg2.connect(connstr)
 conn.autocommit = True
 cur = conn.cursor()
+
+from sqlalchemy import create_engine
+from melt import Base, Statistic, BuildAssoc, StreetAssoc, PlaceAssoc
+engine = create_engine("postgresql://{user}:{pass}@{host}/{db}".format(**conn_par), echo=True)
 from argparse import ArgumentParser
 
 
@@ -111,35 +115,24 @@ def AssocTriggersReCreate():
 
 
 def StatTableReCreate():
-    cur.execute("DROP TABLE IF EXISTS fiosm_stat")
-    cur.execute("""CREATE TABLE fiosm_stat(aoguid    uuid,
-    ao_all  integer, found     integer, street    integer,
-    all_b   integer, found_b   integer,
-    all_r   integer, found_r   integer, street_r    integer,
-    all_b_r integer, found_b_r   integer
-);""")
-
-
-def StatIdxCreate():
-    cur.execute("CREATE INDEX fiosm_stat_aoguid_idx ON fiosm_stat USING btree (aoguid);")
+    Base.metadata.drop_all(engine, (Statistic.__table__, ))
+    Statistic.__table__.create(engine)
 
 
 def AssocTableReCreate():
-    cur.execute("DROP TABLE IF EXISTS " + prefix + pl_aso_tbl)
-    cur.execute("CREATE TABLE " + prefix + pl_aso_tbl + "(aoguid UUID,  osm_admin bigint);")
-    cur.execute("DROP TABLE IF EXISTS " + prefix + way_aso_tbl)
-    cur.execute("CREATE TABLE " + prefix + way_aso_tbl + "(aoguid UUID,  osm_way  bigint);")
+    Base.metadata.drop_all(engine, [PlaceAssoc.__table__, StreetAssoc.__table__])
+    PlaceAssoc.__table__.create(engine)
+    StreetAssoc.__table__.create(engine)
 
 
 def AssocBTableReCreate():
-    cur.execute("DROP TABLE IF EXISTS " + prefix + bld_aso_tbl)
-    cur.execute("CREATE TABLE " + prefix + bld_aso_tbl + "(f_id  int,  osm_build   bigint, point smallint);")
-
+    Base.metadata.drop_all(engine, (BuildAssoc.__table__, ))
+    Base.metadata.create_all(engine, (BuildAssoc.__table__, ))
 
 def AssocIdxCreate():
-    cur.execute("CREATE INDEX " + prefix + pl_aso_tbl + "_aoguid_idx ON " + prefix + pl_aso_tbl + """ USING btree (aoguid);
+    cur.execute("CREATE INDEX " + prefix + pl_aso_tbl + "_ao_id_idx ON " + prefix + pl_aso_tbl + """ USING btree (ao_id);
 CREATE INDEX """ + prefix + pl_aso_tbl + "_osm_admin_idx ON " + prefix + pl_aso_tbl + """ USING btree (osm_admin);""")
-    cur.execute("CREATE INDEX " + prefix + way_aso_tbl + "_aoguid_idx ON " + prefix + way_aso_tbl + """ USING btree (aoguid);
+    cur.execute("CREATE INDEX " + prefix + way_aso_tbl + "_ao_id_idx ON " + prefix + way_aso_tbl + """ USING btree (ao_id);
 CREATE INDEX """ + prefix + way_aso_tbl + "_osm_way_idx ON " + prefix + way_aso_tbl + """ USING btree (osm_way);""")
 
 
@@ -186,6 +179,5 @@ if __name__ == '__main__':
         AssocBTableReCreate()
     if args.stat:
         StatTableReCreate()
-        StatIdxCreate()
     if args.idx:
         AssocIdxCreate()

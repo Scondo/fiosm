@@ -91,7 +91,16 @@ def FindMangled(pgeom, elem, tbl=prefix + ways_table, addcond=""):
     return cur.fetchall()
 
 
+def FindByKladr(elem, tbl=prefix + poly_table, addcond=""):
+    cur = elem.conn.cursor()
+    cur.execute("SELECT name, osm_id FROM " + tbl + """ WHERE "kladr:user" = %s""" + addcond, (elem.fias.code,))
+    return cur.fetchall()
+
 def FindAssocPlace(elem,pgeom):
+    kladr = FindByKladr(elem)
+    if kladr:
+        elem.name = kladr[0][0]
+        return kladr[0][1]
     (candidates,formal)=FindCandidates(pgeom,elem,prefix+poly_table," AND building ISNULL")
     if not candidates:
         return None
@@ -120,25 +129,22 @@ def FindAssocStreet(elem,pgeom):
 def AssocBuild(elem, point):
     '''Search and save building association for elem
     '''
+    houses = elem.subO('not found_b')
+    if not houses:
+        return
     cur = elem.conn.cursor()
     if point:
         cur.execute("""SELECT osm_id, "addr:housenumber" FROM """ + prefix + point_table + """ WHERE "addr:street"=%s AND ST_Within(way,%s)""", (elem.name, elem.geom))
     else:
         cur.execute("""SELECT osm_id, "addr:housenumber" FROM """ + prefix + poly_table + """ WHERE "addr:street"=%s AND ST_Within(way,%s)""", (elem.name, elem.geom))
     osm_h = cur.fetchall()
-    if not osm_h:
-        return []
     #Filtering of found is optimisation for updating and also remove POI with address
     #found_pre = set([h.onestr for h in elem.subO('found_b')])
     #osm_h = filter(lambda it: it[1] not in found_pre, osm_h)
-    houses = elem.subO('not found_b')
     for hid, number in osm_h:
         for house in houses:
             if house.equal_to_str(number):
-                assoc = melt.BuildAssoc()
-                assoc.f_id = house.f_id
-                assoc.osm_build = hid
-                assoc.point = point
+                assoc = melt.BuildAssoc(house.houseguid, hid, point)
                 house.osm = assoc
                 elem.session.add(assoc)
                 houses.remove(house)
@@ -147,14 +153,15 @@ def AssocBuild(elem, point):
 
 def AssociateO(elem):
     '''Search and save association for all subelements of elem
-    
-    This function should work for elements with partitially associated subs 
-    as well as elements without associated subs 
+
+    This function should work for elements with partitially associated subs
+    as well as elements without associated subs
     '''
     if not elem.kind:
         return
     AssocBuild(elem, 0)
     AssocBuild(elem, 1)
+    elem.subO('all', False)
     #run processing for found to parse their subs
     for sub in tuple(elem.subO('found', False)):
         AssociateO(melt.fias_AONode(sub))
@@ -163,11 +170,11 @@ def AssociateO(elem):
         sub_ = melt.fias_AONode(sub)
         streets=FindAssocStreet(sub_,elem.geom)
         if streets<>None:
-            pre = elem.session.query(melt.StreetAssoc).filter_by(aoguid=sub.guid).all()
+            pre = elem.session.query(melt.StreetAssoc).filter_by(ao_id=sub.f_id).all()
             pre = set([it.osm_way for it in pre])
             for street in streets:
                 if street not in pre:
-                    assoc = melt.StreetAssoc(sub.guid, street)
+                    assoc = melt.StreetAssoc(sub.f_id, street)
                     elem.session.add(assoc)
             elem.session.commit()
             AssociateO(sub_)
@@ -185,7 +192,7 @@ def AssociateO(elem):
         if adm_id == None and sub_.fullname not in way_only:
             adm_id=FindAssocPlace(sub_,elem.geom)
         if not adm_id==None:
-            assoc = melt.PlaceAssoc(sub.guid, adm_id)
+            assoc = melt.PlaceAssoc(sub.f_id, adm_id)
             elem.session.add(assoc)
             elem.child_found(sub, 'found')
             sub_.osmid = adm_id
@@ -195,7 +202,7 @@ def AssociateO(elem):
             streets=FindAssocStreet(sub_,elem.geom)
             if streets<>None:
                 for street in streets:
-                    assoc = melt.StreetAssoc(sub.guid, street)
+                    assoc = melt.StreetAssoc(sub.f_id, street)
                     elem.session.add(assoc)
                 elem.session.commit()
                 elem.child_found(sub, 'street')
@@ -212,7 +219,7 @@ def AssocRegion(guid):
     if not region.kind:
         adm_id = FindAssocPlace(region, None)
         if adm_id != None:
-            assoc = melt.PlaceAssoc(guid, adm_id)
+            assoc = melt.PlaceAssoc(region.f_id, adm_id)
             region.session.add(assoc)
             region.session.commit()
             region = melt.fias_AONode(guid, 2, adm_id)
@@ -225,7 +232,7 @@ def AssocRegion(guid):
 def fedobj():
     conn = melt.psycopg2.connect(melt.connstr)
     cur = conn.cursor()
-    cur.execute("SELECT aoguid FROM fias_addr_obj f WHERE parentguid is Null")
+    cur.execute("SELECT aoguid FROM fias_addr_obj f WHERE parentid is Null and livestatus")
     return [it[0] for it in cur.fetchall()]
 
 

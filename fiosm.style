@@ -28,10 +28,11 @@ node,way   note         text         delete   # These tags can be long but are u
 node,way   source       text         delete   # This indicates that we shouldn't store them
 node,way   created_by   text         delete
 
-#node,way   access       text         linear
-node,way   addr:street      text  linear
+#node,way  access       text         linear
+node,way   addr:street  text         linear
 node,way   addr:housenumber    text  linear
-#node,way   addr:interpolation  text  linear 
+node,way   kladr:user   text         linear
+#node,way  addr:interpolation  text  linear 
 node,way   admin_level  text         linear
 node,way   aerialway    text         delete
 node,way   aeroway      text         delete
