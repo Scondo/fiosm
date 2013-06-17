@@ -9,8 +9,7 @@ from os.path import exists
 import rarfile
 updating = ("normdoc", "addrobj", "socrbase", "house")
 import fias_db
-from fias_db import House, HouseFuture, HouseFMeta
-from fias_db import Addrobj, AddrobjFuture
+from fias_db import House, HouseFuture, Addrobj
 import uuid
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -99,9 +98,11 @@ class GuidId(object):
         self.cache = {}
         self.guidn = guidn
         if guidn in record.__table__.primary_key:
-            self.fast = True
+            self.fast = 1
+        elif 'id' in record.__table__.primary_key:
+            self.fast = 2
         else:
-            self.fast = False
+            self.fast = 0
         self.record = record
         self.local = None
 
@@ -113,8 +114,10 @@ class GuidId(object):
             self.local = False
 
     def getrec(self, guid):
-        if self.fast:
+        if self.fast == 1:
             return session.query(self.record).get(guid)
+        elif self.fast == 2 and guid in self.cache:
+            return session.query(self.record).get(self.cache[guid])
         else:
             return session.query(self.record).filter_by(**{self.guidn: guid}).first()
 
@@ -124,7 +127,7 @@ class GuidId(object):
                 idO = None
             elif self.local == False:
                 idO = self.getrec(guid)
-            elif self.local == None:
+            elif self.local is None:
                 self.chklocal()
                 return self.getid(guid)
             else:
@@ -142,30 +145,45 @@ class GuidId(object):
 
         return self.cache[guid]
 
-    def pushrec(self, dic, cache=True):
+    def pushrec(self, dic, cache=True, cmp=None):
         guid = dic[self.guidn]
-        if self.local:
+        if self.local and guid not in self.cache:
             self.max += 1
             dic["id"] = self.max
             idO = None
-        elif self.local == None:
+        elif self.local is None:
             self.chklocal()
             return self.pushrec(dic)
         else:
             idO = self.getrec(guid)
+
         if idO == None:
             idO = self.record(dic)
             session.add(idO)
             if not self.local:
+                #In non-local DB we must commit to get id
                 session.commit()
         else:
-            idO.fromrow(dic)
+            if cmp is None or cmp(dic, idO):
+                idO.fromdic(dic)
         if cache:
             self.cache[guid] = idO.id
         return idO.id
 
 
 NormdocGuidId = GuidId('normdocid', fias_db.Normdoc)
+AoGuidId = GuidId('aoguid', fias_db.Addrobj)
+
+
+def addr_cmp(dic, rec):
+    if rec.aoid is None:
+        #Dummy always should be replaced
+        return True
+    if dic['STARTDATE'] > dic['ENDDATE']:
+        logging.warn("Crazy dates")
+        logging.warn(dic)
+    if dic['STARTDATE'] > rec.startdate or dic['ENDDATE'] > rec.enddate:
+        return True
 
 
 def normdoc_row(name, attrib):
@@ -189,43 +207,39 @@ def socr_obj_row(name, attrib):
 def addr_obj_row(name, attrib):
     global now_row, pushed_rows, upd
     if name == 'Object':
-        if upd:
-            session.query(fias_db.Addrobj).filter_by(aoid=attrib['AOID']).delete()
+        #if upd:
+        #    session.query(fias_db.Addrobj).filter_by(aoid=attrib['AOID']).delete()
 
-        ed = attrib.pop('ENDDATE').split('-')
-        enddate = datetime.date(int(ed[0]), int(ed[1]), int(ed[2]))
-        if enddate < datetime.date.today():
-            if attrib.get('LIVESTATUS', '0') == '1':
-                logging.warn("Outdate yet live")
-                logging.warn(enddate)
-                logging.warn(attrib)
-            return
-
-        if attrib.get('LIVESTATUS', '0') != '1':
+        if 'NEXTID' in attrib:
+            attrib['LIVESTATUS'] = '0'
+            #return
+        #On first pass we can skip all dead, on update they will disable current
+        if not upd and attrib.get('LIVESTATUS', '0') != '1':
             return
 
         if 'NORMDOC' in attrib:
             docid = uuid.UUID(attrib['NORMDOC'])
             attrib['NORMDOC'] = NormdocGuidId.getid(docid)
+        ed = attrib.pop('ENDDATE').split('-')
+        enddate = datetime.date(int(ed[0]), int(ed[1]), int(ed[2]))
         sd = attrib.pop('STARTDATE').split('-')
         startdate = datetime.date(int(sd[0]), int(sd[1]), int(sd[2]))
         attrib['ENDDATE'] = enddate
         attrib['STARTDATE'] = startdate
-        if startdate > datetime.date.today():
-            aobj = AddrobjFuture(attrib)
-            session.add(aobj)
-        else:
-            aobj = Addrobj(attrib)
-            session.add(aobj)
+        attrib['aoguid'] = uuid.UUID(attrib.pop('AOGUID'))
+        if 'PARENTGUID' in attrib:
+            parentid = uuid.UUID(attrib.pop('PARENTGUID'))
+            attrib['parentid'] = AoGuidId.getid(parentid)
+        AoGuidId.pushrec(attrib, cmp=addr_cmp)
 
         now_row += 1
-        if now_row % 10000 == 0:
+        if now_row % 20000 == 0:
             print now_row
             session.commit()
 
-HouseGuidId = GuidId('houseguid', HouseFMeta)
+#HouseGuidId = GuidId('houseguid', HouseFMeta)
 
-
+"""
 def put_house(dic, sd, ed, guid):
     meta = {"STARTDATE": sd,
             "ENDDATE": ed,
@@ -243,7 +257,7 @@ def put_house(dic, sd, ed, guid):
         session.add(rec)
     else:
         rec.fromdic(dic)
-
+"""
 
 def house_row(name, attrib):
     global upd, now_row
@@ -268,14 +282,15 @@ def house_row(name, attrib):
         sd = attrib.pop('STARTDATE').split('-')
         startdate = datetime.date(int(sd[0]), int(sd[1]), int(sd[2]))
         guid = uuid.UUID(attrib.pop("HOUSEGUID"))
+        attrib['ENDDATE'] = enddate
+        attrib['STARTDATE'] = startdate
+        attrib['HOUSEGUID'] = guid
         if startdate > datetime.date.today():
-            attrib['ENDDATE'] = enddate
-            attrib['STARTDATE'] = startdate
-            attrib['HOUSEGUID'] = guid
             hous = fias_db.HouseFuture(attrib)
-            session.add(hous)
         else:
-            put_house(attrib, startdate, enddate, guid)
+            attrib['ao_id'] = AoGuidId.getid(uuid.UUID(attrib.pop('AOGUID')))
+            hous = fias_db.House(attrib)
+        session.add(hous)
 
 
 def UpdateTable(table, fil, engine=None):
@@ -289,8 +304,6 @@ def UpdateTable(table, fil, engine=None):
         if not upd:
             Addrobj.__table__.drop(engine)
             Addrobj.__table__.create(engine)
-            AddrobjFuture.__table__.drop(engine)
-            AddrobjFuture.__table__.create(engine)
         p.StartElementHandler = addr_obj_row
     elif table == 'socrbase':
         session.query(fias_db.Socrbase).delete()
@@ -303,8 +316,6 @@ def UpdateTable(table, fil, engine=None):
             House.__table__.create(engine)
             HouseFuture.__table__.drop(engine)
             HouseFuture.__table__.create(engine)
-            HouseFMeta.__table__.drop(engine)
-            HouseFMeta.__table__.create(engine)
         p.StartElementHandler = house_row
     p.ParseFile(fil)
     session.commit()
