@@ -18,8 +18,9 @@ class FiasRow(object):
         for it in dic.iteritems():
             setattr(self, it[0].lower(), it[1])
 
-    def __init__(self, dic):
-        self.fromdic(dic)
+    def __init__(self, dic=None):
+        if dic is not None:
+            self.fromdic(dic)
 
 
 class Socrbase(FiasRow, Base):
@@ -57,7 +58,6 @@ class Addrobj(FiasRow, Base):
     offname = Column(String(120))
     shortname = Column(String(10))
     aolevel = Column(SmallInteger)
-    postalcode = deferred(Column(Integer))
     #KLADE
     regioncode = deferred(Column(String(2)))
     autocode = deferred(Column(String(1)))
@@ -72,6 +72,7 @@ class Addrobj(FiasRow, Base):
     code = Column(String(17))
     plaincode = deferred(Column(String(15)))
     #NALOG
+    postalcode = deferred(Column(Integer))
     ifnsfl = deferred(Column(SmallInteger))
     terrifnsfl = deferred(Column(SmallInteger))
     ifnsul = deferred(Column(SmallInteger))
@@ -84,31 +85,7 @@ class Addrobj(FiasRow, Base):
     operstatus = deferred(Column(SmallInteger))
     currstatus = deferred(Column(SmallInteger))
     normdoc = deferred(Column(Integer))
-    livestatus = Column(Boolean)
-
-
-class HouseFuture(FiasRow, Base):
-    __tablename__ = 'fias_house_future'
-    postalcode = Column(Integer)
-    ifnsfl = Column(SmallInteger)
-    terrifnsfl = Column(SmallInteger)
-    ifnsul = Column(SmallInteger)
-    terrifnsul = Column(SmallInteger)
-    okato = Column(BigInteger)
-    oktmo = Column(Integer)
-    updatedate = Column(Date)
-    housenum = Column(String(20))
-    eststatus = Column(SmallInteger)
-    buildnum = Column(String(10))
-    strucnum = Column(String(10))
-    strstatus = Column(SmallInteger)
-    houseguid = Column(UUID(as_uuid=True))
-    houseid = Column(UUID, primary_key=True)
-    aoguid = Column(UUID, index=False)
-    startdate = Column(Date)
-    enddate = Column(Date)
-    statstatus = Column(SmallInteger)
-    normdoc = Column(Integer)
+    livestatus = Column(Boolean, index=True)
 
 
 class House(FiasRow, Base):

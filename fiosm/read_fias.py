@@ -3,13 +3,14 @@
 from __future__ import division
 import xml.parsers.expat
 import datetime
+today = datetime.date.today()
 import logging
 from urllib import urlretrieve, urlcleanup
 from os.path import exists
 import rarfile
 updating = ("normdoc", "addrobj", "socrbase", "house")
 import fias_db
-from fias_db import House, HouseFuture, Addrobj
+from fias_db import House, Addrobj
 import uuid
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -40,7 +41,9 @@ class FiasFiles(object):
                         if ver is None:
                             ver = fias_db.Versions(one['VersionId'])
                             session.add(ver)
-                        ver.dumpdate = datetime.datetime.strptime(one['TextVersion'][-10:], "%d.%m.%Y").date()
+                        dumpdate = one['TextVersion'][-10:].split('.')
+                        ver.dumpdate = datetime.date(int(dumpdate[2]), int(dumpdate[1]), int(dumpdate[0]))
+                        #ver.dumpdate = datetime.datetime.strptime(one['TextVersion'][-10:], "%d.%m.%Y").date()
                         del one['VersionId']
                         self.fias_list[ver.ver] = one
                     session.commit()
@@ -134,7 +137,8 @@ class GuidId(object):
                 raise AssertionError('wrong cache state')
 
             if idO == None:
-                idO = self.record({self.guidn: guid})
+                idO = self.record()
+                setattr(idO, self.guidn, guid)
                 session.add(idO)
                 if self.local:
                     self.max += 1
@@ -145,7 +149,7 @@ class GuidId(object):
 
         return self.cache[guid]
 
-    def pushrec(self, dic, cache=True, cmp=None):
+    def pushrec(self, dic, cmp=None):
         guid = dic[self.guidn]
         if self.local and guid not in self.cache:
             self.max += 1
@@ -157,7 +161,7 @@ class GuidId(object):
         else:
             idO = self.getrec(guid)
 
-        if idO == None:
+        if idO is None:
             idO = self.record(dic)
             session.add(idO)
             if not self.local:
@@ -165,10 +169,10 @@ class GuidId(object):
                 session.commit()
         else:
             if cmp is None or cmp(dic, idO):
+                del dic[self.guidn]
                 idO.fromdic(dic)
-        if cache:
-            self.cache[guid] = idO.id
-        return idO.id
+        self.cache[guid] = idO.id
+        #return idO.id
 
 
 NormdocGuidId = GuidId('normdocid', fias_db.Normdoc)
@@ -179,22 +183,29 @@ def addr_cmp(dic, rec):
     if rec.aoid is None:
         #Dummy always should be replaced
         return True
+    if dic['AOID'] == rec.aoid:
+        #New rec is always better
+        return True
     if dic['STARTDATE'] > dic['ENDDATE']:
         logging.warn("Crazy dates")
         logging.warn(dic)
-    if dic['STARTDATE'] > rec.startdate or dic['ENDDATE'] > rec.enddate:
+    if dic['STARTDATE'] > rec.startdate:
         return True
+    if dic['STARTDATE'] == rec.startdate and dic['ENDDATE'] > rec.enddate:
+        logging.warn("Same start")
+        #When start from same date better is one who finish last
+        return True
+    return False
 
 
 def normdoc_row(name, attrib):
     global now_row
     if name == "NormativeDocument":
         now_row += 1
-        if now_row % 100000 == 0:
+        if now_row % 50000 == 0:
             print now_row
             session.commit()
-        docid = uuid.UUID(attrib.pop('NORMDOCID'))
-        attrib['normdocid'] = docid
+        attrib['normdocid'] = uuid.UUID(attrib.pop('NORMDOCID'))
         NormdocGuidId.pushrec(attrib)
 
 
@@ -205,31 +216,24 @@ def socr_obj_row(name, attrib):
 
 
 def addr_obj_row(name, attrib):
-    global now_row, pushed_rows, upd
+    global now_row, upd
     if name == 'Object':
-        #if upd:
-        #    session.query(fias_db.Addrobj).filter_by(aoid=attrib['AOID']).delete()
-
         if 'NEXTID' in attrib:
+            #If one have successor - it's dead
             attrib['LIVESTATUS'] = '0'
-            #return
-        #On first pass we can skip all dead, on update they will disable current
         if not upd and attrib.get('LIVESTATUS', '0') != '1':
+            #On first pass we can skip all dead, on update they will disable current
             return
 
         if 'NORMDOC' in attrib:
-            docid = uuid.UUID(attrib['NORMDOC'])
-            attrib['NORMDOC'] = NormdocGuidId.getid(docid)
+            attrib['NORMDOC'] = NormdocGuidId.getid(uuid.UUID(attrib['NORMDOC']))
         ed = attrib.pop('ENDDATE').split('-')
-        enddate = datetime.date(int(ed[0]), int(ed[1]), int(ed[2]))
+        attrib['ENDDATE'] = datetime.date(int(ed[0]), int(ed[1]), int(ed[2]))
         sd = attrib.pop('STARTDATE').split('-')
-        startdate = datetime.date(int(sd[0]), int(sd[1]), int(sd[2]))
-        attrib['ENDDATE'] = enddate
-        attrib['STARTDATE'] = startdate
+        attrib['STARTDATE'] = datetime.date(int(sd[0]), int(sd[1]), int(sd[2]))
         attrib['aoguid'] = uuid.UUID(attrib.pop('AOGUID'))
         if 'PARENTGUID' in attrib:
-            parentid = uuid.UUID(attrib.pop('PARENTGUID'))
-            attrib['parentid'] = AoGuidId.getid(parentid)
+            attrib['parentid'] = AoGuidId.getid(uuid.UUID(attrib.pop('PARENTGUID')))
         AoGuidId.pushrec(attrib, cmp=addr_cmp)
 
         now_row += 1
@@ -237,27 +241,13 @@ def addr_obj_row(name, attrib):
             print now_row
             session.commit()
 
-#HouseGuidId = GuidId('houseguid', HouseFMeta)
+#Predefined some crazy records
+pushed_hous = {uuid.UUID('312f2f09-df65-46e3-ae25-383358b1ea3e'): datetime.date(100, 1, 1),
+               uuid.UUID('4c10b3d9-5d49-4d45-a0d9-e068f7029c90'): datetime.date(100, 1, 1),
+               uuid.UUID('32aabe5d-e1e2-44e9-979c-00d729573e5b'): datetime.date(100, 1, 1)
+               }
+#Keys are guids, values are startdates
 
-"""
-def put_house(dic, sd, ed, guid):
-    meta = {"STARTDATE": sd,
-            "ENDDATE": ed,
-            "houseguid": guid,
-            "HOUSEID": dic.pop("HOUSEID")}
-    f_id = HouseGuidId.pushrec(meta, False)
-    if HouseGuidId.local:
-        rec = None
-    else:
-        rec = session.query(fias_db.House).get(f_id)
-
-    if rec == None:
-        dic['f_id'] = f_id
-        rec = fias_db.House(dic)
-        session.add(rec)
-    else:
-        rec.fromdic(dic)
-"""
 
 def house_row(name, attrib):
     global upd, now_row
@@ -266,31 +256,46 @@ def house_row(name, attrib):
         if now_row % 100000 == 0:
             print now_row
             session.commit()
-
+        rec = None
         if upd:
-            session.query(fias_db.House).filter_by(houseid=attrib['HOUSEID']).delete()
+            session.query(House).filter_by(houseid=attrib['HOUSEID']).delete()
 
         ed = attrib.pop('ENDDATE').split('-')
         enddate = datetime.date(int(ed[0]), int(ed[1]), int(ed[2]))
-        if enddate < datetime.date.today():
+        sd = attrib.pop('STARTDATE').split('-')
+        startdate = datetime.date(int(sd[0]), int(sd[1]), int(sd[2]))
+
+        strange = startdate >= enddate
+        if not strange and enddate < today:
             return
+        guid = uuid.UUID(attrib.pop("HOUSEGUID"))
+        if guid in pushed_hous:
+            if pushed_hous[guid] > startdate:
+                return
+            else:
+                rec = session.query(House).get(guid)
 
         del attrib['COUNTER']
         if 'NORMDOC' in attrib:
-                docid = uuid.UUID(attrib['NORMDOC'])
-                attrib['NORMDOC'] = NormdocGuidId.getid(docid)
-        sd = attrib.pop('STARTDATE').split('-')
-        startdate = datetime.date(int(sd[0]), int(sd[1]), int(sd[2]))
-        guid = uuid.UUID(attrib.pop("HOUSEGUID"))
-        attrib['ENDDATE'] = enddate
-        attrib['STARTDATE'] = startdate
-        attrib['HOUSEGUID'] = guid
-        if startdate > datetime.date.today():
-            hous = fias_db.HouseFuture(attrib)
+            attrib['NORMDOC'] = NormdocGuidId.getid(uuid.UUID(attrib['NORMDOC']))
+
+        if strange or startdate >= today:
+            pushed_hous[guid] = startdate
+            rec = session.query(House).get(guid)
+
+        aoguid = uuid.UUID(attrib.pop('AOGUID'))
+        if rec is None:
+            rec = fias_db.House(attrib)
+            rec.houseguid = guid
+            session.add(rec)
         else:
-            attrib['ao_id'] = AoGuidId.getid(uuid.UUID(attrib.pop('AOGUID')))
-            hous = fias_db.House(attrib)
-        session.add(hous)
+            if startdate > rec.startdate:
+                rec.fromdic(attrib)
+            else:
+                return
+        rec.enddate = enddate
+        rec.startdate = startdate
+        rec.ao_id = AoGuidId.getid(aoguid)
 
 
 def UpdateTable(table, fil, engine=None):
@@ -314,12 +319,15 @@ def UpdateTable(table, fil, engine=None):
         if not upd:
             House.__table__.drop(engine)
             House.__table__.create(engine)
-            HouseFuture.__table__.drop(engine)
-            HouseFuture.__table__.create(engine)
         p.StartElementHandler = house_row
     p.ParseFile(fil)
     session.commit()
+    if not upd and engine.name == 'postgresql':
+        print "Index and cluster"
+        if table == 'addrobj':
+            engine.execute("CLUSTER fias_addr_obj USING ix_fias_addr_obj_parentid")
     print table + " imported"
+
 
 import argparse
 if __name__ == "__main__":
@@ -328,7 +336,7 @@ if __name__ == "__main__":
     parser.add_argument("--fullver", type=int)
     args = parser.parse_args()
     from config import conn_par
-    engine = create_engine("postgresql://{user}:{pass}@{host}/{db}".format(**conn_par), echo=False)
+    engine = create_engine("postgresql://{user}:{pass}@{host}/{db}".format(**conn_par), echo=False, implicit_returning=False)
     Session.configure(bind=engine)
     session = Session()
     fias_db.Base.metadata.create_all(engine)
