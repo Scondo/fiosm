@@ -3,7 +3,14 @@
 from __future__ import division
 import xml.parsers.expat
 import datetime
-today = datetime.date.today()
+
+
+def strpdate(string, fmt):
+    return datetime.datetime.strptime(string, fmt).date()
+
+
+from datetime import date
+today = date.today()
 import logging
 from urllib import urlretrieve, urlcleanup
 from os.path import exists
@@ -11,13 +18,14 @@ import rarfile
 updating = ("normdoc", "addrobj", "socrbase", "house")
 import fias_db
 from fias_db import House, Addrobj
-import uuid
+from uuid import UUID
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 Session = sessionmaker()
 session = Session()
 upd = False
 now_row = 0
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 
 
 class FiasFiles(object):
@@ -32,18 +40,23 @@ class FiasFiles(object):
             try:
                 from pysimplesoap import client
                 client.TIMEOUT = None
-                fias = client.SoapClient(wsdl="http://fias.nalog.ru/WebServices/Public/DownloadService.asmx?WSDL", trace=False)
+                fias = client.SoapClient(\
+                        wsdl="http://fias.nalog.ru/WebServices"
+                         "/Public/DownloadService.asmx?WSDL", trace=False)
                 fias_list_raw = fias.GetAllDownloadFileInfo()
-                if fias_list_raw and 'GetAllDownloadFileInfoResult' in fias_list_raw:
+                if fias_list_raw and \
+                    'GetAllDownloadFileInfoResult' in fias_list_raw:
                     for it in fias_list_raw['GetAllDownloadFileInfoResult']:
                         one = it['DownloadFileInfo']
-                        ver = session.query(fias_db.Versions).get(one['VersionId'])
+                        ver = session.query(fias_db.Versions).\
+                                    get(one['VersionId'])
                         if ver is None:
                             ver = fias_db.Versions(one['VersionId'])
                             session.add(ver)
                         dumpdate = one['TextVersion'][-10:].split('.')
-                        ver.dumpdate = datetime.date(int(dumpdate[2]), int(dumpdate[1]), int(dumpdate[0]))
-                        #ver.dumpdate = datetime.datetime.strptime(one['TextVersion'][-10:], "%d.%m.%Y").date()
+                        ver.dumpdate = date(int(dumpdate[2]),
+                                            int(dumpdate[1]),
+                                            int(dumpdate[0]))
                         del one['VersionId']
                         self.fias_list[ver.ver] = one
                     session.commit()
@@ -52,11 +65,15 @@ class FiasFiles(object):
         return cls.instance
 
     def maxver(self):
-        return max(self.fias_list.iterkeys())
+        if self.fias_list:
+            return max(self.fias_list.iterkeys())
+        else:
+            return 0
 
     def get_fullarch(self):
         if self.full_file == None or not exists(self.full_file):
-            urlretrieve(self.fias_list[self.maxver()]['FiasCompleteXmlUrl'], self.full_file)
+            urlretrieve(self.fias_list[self.maxver()]['FiasCompleteXmlUrl'],
+                        self.full_file)
             self.full_ver = self.maxver()
 
     def get_fullfile(self, table):
@@ -64,16 +81,18 @@ class FiasFiles(object):
         arch = rarfile.RarFile(self.full_file)
         for filename in arch.namelist():
             if filename[3:].lower().startswith(table + '_'):
-                fdate = datetime.datetime.strptime(filename.split("_")[2], "%Y%m%d").date()
+                fdate = strpdate(filename.split("_")[2], "%Y%m%d")
                 if self.full_ver is None:
-                    rec = session.query(fias_db.Versions).filter_by(date=fdate).one()
+                    rec = session.query(fias_db.Versions).\
+                            filter_by(date=fdate).first()
                     if rec is None:
                         self.full_ver = 0  # TODO: search by dumpdate
                     else:
                         self.full_ver = rec.ver
                 else:
                     try:
-                        rec = session.query(fias_db.Versions).get(self.full_ver)
+                        rec = session.query(fias_db.Versions).\
+                                        get(self.full_ver)
                         rec.date = fdate
                     except:
                         pass
@@ -87,7 +106,7 @@ class FiasFiles(object):
                 #Get and save date
                 try:
                     rec = session.query(fias_db.Versions).get(ver)
-                    rec.date = datetime.datetime.strptime(filename.split("_")[3], "%Y%m%d").date()
+                    rec.date = strpdate(filename.split("_")[3], "%Y%m%d")
                 except:
                     pass
                 return arch.open(filename)
@@ -122,7 +141,8 @@ class GuidId(object):
         elif self.fast == 2 and guid in self.cache:
             return session.query(self.record).get(self.cache[guid])
         else:
-            return session.query(self.record).filter_by(**{self.guidn: guid}).first()
+            return session.query(self.record).\
+                filter_by(**{self.guidn: guid}).first()
 
     def getid(self, guid):
         if guid not in self.cache:
@@ -149,7 +169,7 @@ class GuidId(object):
 
         return self.cache[guid]
 
-    def pushrec(self, dic, cmp=None):
+    def pushrec(self, dic, comp=None):
         guid = dic[self.guidn]
         if self.local and guid not in self.cache:
             self.max += 1
@@ -168,7 +188,7 @@ class GuidId(object):
                 #In non-local DB we must commit to get id
                 session.commit()
         else:
-            if cmp is None or cmp(dic, idO):
+            if comp is None or comp(dic, idO):
                 del dic[self.guidn]
                 idO.fromdic(dic)
         self.cache[guid] = idO.id
@@ -203,9 +223,9 @@ def normdoc_row(name, attrib):
     if name == "NormativeDocument":
         now_row += 1
         if now_row % 50000 == 0:
-            print now_row
+            logging.info(now_row)
             session.commit()
-        attrib['normdocid'] = uuid.UUID(attrib.pop('NORMDOCID'))
+        attrib['normdocid'] = UUID(attrib.pop('NORMDOCID'))
         NormdocGuidId.pushrec(attrib)
 
 
@@ -222,29 +242,30 @@ def addr_obj_row(name, attrib):
             #If one have successor - it's dead
             attrib['LIVESTATUS'] = '0'
         if not upd and attrib.get('LIVESTATUS', '0') != '1':
-            #On first pass we can skip all dead, on update they will disable current
+            #On first pass we can skip all dead,
+            #on update they will disable current
             return
 
         if 'NORMDOC' in attrib:
-            attrib['NORMDOC'] = NormdocGuidId.getid(uuid.UUID(attrib['NORMDOC']))
+            attrib['NORMDOC'] = NormdocGuidId.getid(UUID(attrib['NORMDOC']))
         ed = attrib.pop('ENDDATE').split('-')
-        attrib['ENDDATE'] = datetime.date(int(ed[0]), int(ed[1]), int(ed[2]))
+        attrib['ENDDATE'] = date(int(ed[0]), int(ed[1]), int(ed[2]))
         sd = attrib.pop('STARTDATE').split('-')
-        attrib['STARTDATE'] = datetime.date(int(sd[0]), int(sd[1]), int(sd[2]))
-        attrib['aoguid'] = uuid.UUID(attrib.pop('AOGUID'))
+        attrib['STARTDATE'] = date(int(sd[0]), int(sd[1]), int(sd[2]))
+        attrib['aoguid'] = UUID(attrib.pop('AOGUID'))
         if 'PARENTGUID' in attrib:
-            attrib['parentid'] = AoGuidId.getid(uuid.UUID(attrib.pop('PARENTGUID')))
-        AoGuidId.pushrec(attrib, cmp=addr_cmp)
+            attrib['parentid'] = AoGuidId.getid(UUID(attrib.pop('PARENTGUID')))
+        AoGuidId.pushrec(attrib, comp=addr_cmp)
 
         now_row += 1
         if now_row % 20000 == 0:
-            print now_row
+            logging.info(now_row)
             session.commit()
 
 #Predefined some crazy records
-pushed_hous = {uuid.UUID('312f2f09-df65-46e3-ae25-383358b1ea3e'): datetime.date(100, 1, 1),
-               uuid.UUID('4c10b3d9-5d49-4d45-a0d9-e068f7029c90'): datetime.date(100, 1, 1),
-               uuid.UUID('32aabe5d-e1e2-44e9-979c-00d729573e5b'): datetime.date(100, 1, 1)
+pushed_hous = {UUID('312f2f09-df65-46e3-ae25-383358b1ea3e'): date(100, 1, 1),
+               UUID('4c10b3d9-5d49-4d45-a0d9-e068f7029c90'): date(100, 1, 1),
+               UUID('32aabe5d-e1e2-44e9-979c-00d729573e5b'): date(100, 1, 1)
                }
 #Keys are guids, values are startdates
 
@@ -254,21 +275,21 @@ def house_row(name, attrib):
     if name == 'House':
         now_row += 1
         if now_row % 100000 == 0:
-            print now_row
+            logging.info(now_row)
             session.commit()
         rec = None
         if upd:
             session.query(House).filter_by(houseid=attrib['HOUSEID']).delete()
 
         ed = attrib.pop('ENDDATE').split('-')
-        enddate = datetime.date(int(ed[0]), int(ed[1]), int(ed[2]))
+        enddate = date(int(ed[0]), int(ed[1]), int(ed[2]))
         sd = attrib.pop('STARTDATE').split('-')
-        startdate = datetime.date(int(sd[0]), int(sd[1]), int(sd[2]))
+        startdate = date(int(sd[0]), int(sd[1]), int(sd[2]))
 
         strange = startdate >= enddate
         if not strange and enddate < today:
             return
-        guid = uuid.UUID(attrib.pop("HOUSEGUID"))
+        guid = UUID(attrib.pop("HOUSEGUID"))
         if guid in pushed_hous:
             if pushed_hous[guid] > startdate:
                 return
@@ -276,14 +297,12 @@ def house_row(name, attrib):
                 rec = session.query(House).get(guid)
 
         del attrib['COUNTER']
-        if 'NORMDOC' in attrib:
-            attrib['NORMDOC'] = NormdocGuidId.getid(uuid.UUID(attrib['NORMDOC']))
+        normdoc = attrib.pop('NORMDOC', None)
+        aoguid = attrib.pop('AOGUID')
 
         if strange or startdate >= today:
             pushed_hous[guid] = startdate
             rec = session.query(House).get(guid)
-
-        aoguid = uuid.UUID(attrib.pop('AOGUID'))
         if rec is None:
             rec = fias_db.House(attrib)
             rec.houseguid = guid
@@ -295,7 +314,9 @@ def house_row(name, attrib):
                 return
         rec.enddate = enddate
         rec.startdate = startdate
-        rec.ao_id = AoGuidId.getid(aoguid)
+        rec.ao_id = AoGuidId.getid(UUID(aoguid))
+        if not (normdoc is None):
+            rec.normdoc = NormdocGuidId.getid(UUID(normdoc))
 
 
 def UpdateTable(table, fil, engine=None):
@@ -304,7 +325,7 @@ def UpdateTable(table, fil, engine=None):
         return
     p = xml.parsers.expat.ParserCreate()
     now_row = 0
-    print "start import " + table
+    logging.info("start import " + table)
     if table == 'addrobj':
         if not upd:
             Addrobj.__table__.drop(engine)
@@ -323,20 +344,28 @@ def UpdateTable(table, fil, engine=None):
     p.ParseFile(fil)
     session.commit()
     if not upd and engine.name == 'postgresql':
-        print "Index and cluster"
-        if table == 'addrobj':
-            engine.execute("CLUSTER fias_addr_obj USING ix_fias_addr_obj_parentid")
-    print table + " imported"
+        logging.info("Index and cluster")
+        if table == 'house':
+            engine.execute("CREATE INDEX parent ON fias_house "
+                           "USING btree (ao_id)")
+            engine.execute("CLUSTER fias_house USING parent")
+        elif table == 'addrobj':
+            engine.execute("CLUSTER fias_addr_obj "
+                           "USING ix_fias_addr_obj_parentid")
+    logging.info(table + " imported")
 
 
 import argparse
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Reader of FIAS into database")
+    parser = argparse.ArgumentParser(\
+                            description="Reader of FIAS into database")
     parser.add_argument("--fullfile")
     parser.add_argument("--fullver", type=int)
     args = parser.parse_args()
     from config import conn_par
-    engine = create_engine("postgresql://{user}:{pass}@{host}/{db}".format(**conn_par), echo=False, implicit_returning=False)
+    engine = create_engine("postgresql://{user}:{pass}@{host}/{db}".\
+                           format(**conn_par), echo=False,
+                           implicit_returning=False)
     Session.configure(bind=engine)
     session = Session()
     fias_db.Base.metadata.create_all(engine)
@@ -362,7 +391,8 @@ if __name__ == "__main__":
     upd = True
     for ver in range(minver + 1, FiasFiles().maxver() + 1):
         for tabl in updating:
-            my = sess.query(fias_db.TableStatus).filter_by(tablename=tabl).first()
+            my = sess.query(fias_db.TableStatus).\
+                filter_by(tablename=tabl).first()
             if my.ver < ver:
                 UpdateTable(tabl, FiasFiles().get_updfile(tabl, ver))
                 my.ver = ver
