@@ -7,6 +7,7 @@ StreetMangler with some db addition
 '''
 from config import connstr
 import psycopg2
+import logging
 
 conn=None
 guess_tbl="mangle_guess"
@@ -23,14 +24,18 @@ def InitMangle(no_guess=True):
         locale=streetmangler.Locale('ru_RU')
         db = streetmangler.Database(locale)
 
-        db.Load("ru_RU.txt")
-        for guess in ListGuess(all_=not(no_guess)):
-            db.Add(guess)
+        db.Load("data/ru_RU.txt")
+        #for guess in ListGuess(all_=not(no_guess)):
+        #    db.Add(guess)
 
         usable=True
-    except:
+        logging.info("Mangle OK")
+    except BaseException as e:
+        logging.warn(e.message.decode("cp1251"))
+        #raise e
         usable=False
-        
+        logging.warn("Mangle Broken")
+
 def ListGuess(all_=False):
     """Get guess for streetmangle from sql db
     """

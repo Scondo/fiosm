@@ -11,7 +11,7 @@ cur = conn.cursor()
 
 from sqlalchemy import create_engine
 from melt import Base, Statistic, BuildAssoc, StreetAssoc, PlaceAssoc
-engine = create_engine("postgresql://{user}:{pass}@{host}/{db}".format(**conn_par), echo=True)
+engine = create_engine("postgresql://{user}:{pass}@{host}/{db}".format(**conn_par), echo=False)
 from argparse import ArgumentParser
 
 

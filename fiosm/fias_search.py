@@ -3,11 +3,15 @@
 
 import melt
 import mangledb
+import logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 mangledb.InitMangle(False)
 from config import *
 way_only = frozenset((u'улица', u'проезд', u'проспект', u'переулок', u'шоссе',
-                      u'тупик', u'бульвар', u'проулок', u'набережная', u'дорога'))
-pl_only = frozenset((u'город', u'район', u'территория', u'городок', u'деревня', u'поселок'))
+                      u'тупик', u'бульвар', u'проулок', u'набережная',
+                      u'дорога'))
+pl_only = frozenset((u'город', u'район', u'территория', u'городок',
+                     u'деревня', u'поселок'))
 
 
 def Subareas(elem):
@@ -39,21 +43,25 @@ def Subareas(elem):
             res[name[0]]=id_a
     return res
 
-def FindCandidates(pgeom,elem,tbl=prefix+poly_table,addcond=""):
+
+def FindCandidates(pgeom, elem, tbl=prefix + poly_table, addcond=""):
     '''Get elements that may be osm representation of elem
     That items must contain part of elem's name full or formal (this will be returned)
     and lies within polygon pgeom (polygon of parent territory)
-    
+
     return ( [(name, osmid),..],formal)
     '''
     cur = elem.conn.cursor()
-    formal=True
-    name='%'+elem.formalname+'%'
-    if pgeom==None:
-        cur.execute("SELECT name, osm_id FROM "+tbl+" WHERE lower(name) LIKE lower(%s)"+addcond,(name,))
+    formal = True
+    name = '%' + elem.formalname + '%'
+    if pgeom is None:
+        cur.execute("SELECT name, osm_id FROM " + tbl + \
+                    " WHERE lower(name) LIKE lower(%s)" + addcond, (name,))
     else:
-        cur.execute("SELECT name, osm_id FROM "+tbl+" WHERE lower(name) LIKE lower(%s) AND ST_Within(way,%s)"+addcond,(name,pgeom))
-    res=cur.fetchall()
+        cur.execute("SELECT name, osm_id FROM " + tbl + \
+        " WHERE lower(name) LIKE lower(%s) AND ST_Within(way,%s)" + addcond,
+        (name, pgeom))
+    res = cur.fetchall()
     if not res:
         if elem.offname==None or elem.formalname==elem.offname:
             return (None,None)
@@ -71,57 +79,78 @@ def FindCandidates(pgeom,elem,tbl=prefix+poly_table,addcond=""):
     return (res,formal)
 
 
-def FindMangled(pgeom, elem, tbl=prefix + ways_table, addcond=""):
-    '''Get osm representation of elem using name from streetmangler
+def FindByName(pgeom, conn, name, tbl=prefix + ways_table, addcond=""):
+    '''Get osm representation of object 'name'
     That items must lies within polygon pgeom (polygon of parent territory)
 
-    return (name, osmid)
+    return [osmid]
     '''
-    if melt.mangledb.usable:
-        mangl_n = melt.mangledb.db.CheckCanonicalForm(elem.shortname + " " + elem.formalname)
-        if not mangl_n:
-            return
-    else:
-        return
-    cur = elem.conn.cursor()
+    cur = conn.cursor()
     if pgeom == None:
-        cur.execute("SELECT name, osm_id FROM " + tbl + " WHERE lower(name) = lower(%s)" + addcond, (mangl_n,))
+        cur.execute("SELECT osm_id FROM " + tbl + \
+                    " WHERE lower(name) = lower(%s)" + addcond, (name,))
     else:
-        cur.execute("SELECT name, osm_id FROM " + tbl + " WHERE lower(name) = lower(%s) AND ST_Within(way,%s)" + addcond, (mangl_n, pgeom))
+        cur.execute("SELECT osm_id FROM " + tbl + \
+                    " WHERE lower(name) = lower(%s) AND ST_Within(way,%s)" + \
+                    addcond, (name, pgeom))
     return cur.fetchall()
 
 
 def FindByKladr(elem, tbl=prefix + poly_table, addcond=""):
     cur = elem.conn.cursor()
-    cur.execute("SELECT name, osm_id FROM " + tbl + """ WHERE "kladr:user" = %s""" + addcond, (elem.fias.code,))
+    cur.execute("SELECT name, osm_id FROM " + tbl + \
+                """ WHERE "kladr:user" = %s""" + addcond, (elem.fias.code,))
     return cur.fetchall()
 
-def FindAssocPlace(elem,pgeom):
-    kladr = FindByKladr(elem)
+
+def FindAssocPlace(elem, pgeom):
+    session = elem.session
+    kladr = FindByKladr(elem, addcond=" AND building ISNULL")
     if kladr:
         elem.name = kladr[0][0]
         return kladr[0][1]
-    (candidates,formal)=FindCandidates(pgeom,elem,prefix+poly_table," AND building ISNULL")
+    #for name in elem.names():
+    #    checked = FindByName(pgeom, elem.conn, name, prefix + poly_table,
+    #                         " AND building ISNULL")
+    #    if checked:
+    #        elem.name = name
+    #        return checked[0]
+    (candidates, formal) = FindCandidates(pgeom, elem, prefix + poly_table,
+                                          " AND building ISNULL")
     if not candidates:
         return None
     for name in elem.names(formal):
-        checked=[it[1] for it in candidates if it[0].lower()==name.lower()]
-        if checked:
-            elem.name = name
-            return checked[0]
+        checked = [it[1] for it in candidates if it[0].lower() == name.lower()]
+        for osmid in checked:
+            if session.query(melt.PlaceAssoc).get(osmid) is None:
+                elem.name = name
+                return osmid
 
-def FindAssocStreet(elem,pgeom):
-    mangled = FindMangled(pgeom, elem, prefix + ways_table, " AND highway NOTNULL")
-    if mangled:
-        elem.name = mangled[0][0]
-        return [it[1] for it in mangled]
-    (candidates,formal)=FindCandidates(pgeom,elem,prefix+ways_table," AND highway NOTNULL")
+
+def FindAssocStreet(elem, pgeom):
+    session = elem.session
+    mangl_n = elem.maname(elem.formalname)
+    if mangl_n:
+        checked = FindByName(pgeom, elem.conn, mangl_n, prefix + ways_table,
+                             " AND highway NOTNULL")
+        checked = filter(
+            lambda osmid: session.query(melt.StreetAssoc).get(osmid) is None,
+            checked)
+        if checked:
+            elem.name = mangl_n
+            return checked
+    (candidates, formal) = FindCandidates(pgeom, elem,
+                                          prefix + ways_table,
+                                          " AND highway NOTNULL")
     if not candidates:
         return None
     for name in elem.names(formal):
-        checked=[it[1] for it in candidates if it[0].lower()==name.lower()]
+        checked = [it[1] for it in candidates if it[0].lower() == name.lower()]
+        checked = filter(
+            lambda osmid: session.query(melt.StreetAssoc).get(osmid) is None,
+            checked)
         if checked:
-            mangledb.AddMangleGuess(name)
+            #mangledb.AddMangleGuess(name)
             elem.name = name
             return checked
 
@@ -157,6 +186,7 @@ def AssociateO(elem):
     This function should work for elements with partitially associated subs
     as well as elements without associated subs
     '''
+    global done
     if not elem.kind:
         return
     AssocBuild(elem, 0)
@@ -232,8 +262,9 @@ def AssocRegion(guid):
 def fedobj():
     conn = melt.psycopg2.connect(melt.connstr)
     cur = conn.cursor()
-    cur.execute("SELECT aoguid FROM fias_addr_obj f WHERE parentid is Null and livestatus")
-    return [it[0] for it in cur.fetchall()]
+    cur.execute("SELECT aoguid FROM fias_addr_obj WHERE (parentid is Null) and livestatus")
+    res = cur.fetchall()
+    return [it[0] for it in res]
 
 
 def AssORoot():
@@ -241,7 +272,8 @@ def AssORoot():
     '''
     print "Here we go!"
     for sub in fedobj():
-        print AssocRegion(sub)
+        passed = AssocRegion(sub)
+        logging.info(passed)
 
 
 def AssORootM():
