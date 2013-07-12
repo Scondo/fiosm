@@ -15,7 +15,7 @@ def details_view(request):
         raise HTTPBadRequest()
     myself = melt.fias_AONode(guid)
     statlink = request.route_url('found0', guid=guid, typ='all')
-    return {"fias": myself.fias, "statlink": statlink, "name": myself.name}
+    return {"myself": myself, "statlink": statlink, "name": myself.name}
 
 
 @view_config(route_name='found', renderer='templates/found.pt')

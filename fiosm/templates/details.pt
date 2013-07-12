@@ -10,22 +10,22 @@
   .fias{width:90%}
   </style>
 </head><body><table class="fias" border="1" cellspaceing="1">
-	<tr><td colspan=2>${name}</td></tr>
+	<tr><td colspan=2>${myself.name}</td></tr>
 	<tr>
 	<td>Почтовый индекс:</td>
-	<td>${fias.postalcode}</td>
+	<td>${myself.fias.postalcode}</td>
 	</tr>
 	<tr>
 	<td>Код КЛАДР:</td>
-	<td>${fias.code}</td>
+	<td>${myself.fias.code}</td>
 	</tr>
 		<tr>
 	<td>Код ОКАТО:</td>
-	<td>${fias.okato}</td>
+	<td>${myself.fias.okato}</td>
 	</tr>
 	<tr>
 	<td>Код ОКМТО:</td>
-	<td>${fias.oktmo}</td>
+	<td>${myself.fias.oktmo}</td>
 	</tr>
 	<tr><td colspan=2><a href="${statlink}">Статистика сопоставления</a></td></tr>
 	</table>
