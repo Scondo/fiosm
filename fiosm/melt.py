@@ -14,7 +14,6 @@ import logging
 
 import mangledb
 from config import *
-stat_conn = None
 
 socr_cache = {}
 #with keys socr#aolev
@@ -309,7 +308,8 @@ class fias_AO(object):
                 self._stat[typ] = 0
             else:
                 #make request
-                q = self.session.query(Addrobj).filter_by(parentid=self.f_id)
+                q = self.session.query(Addrobj).filter_by(parentid=self.f_id,
+                                                          livestatus=True)
                 if typ == 'found':
                     q = q.join(PlaceAssoc)
                 elif typ == 'street':
