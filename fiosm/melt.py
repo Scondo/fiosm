@@ -313,7 +313,7 @@ class fias_AO(object):
                 if typ == 'found':
                     q = q.join(PlaceAssoc)
                 elif typ == 'street':
-                    q = q.join(StreetAssoc)
+                    q = q.join(StreetAssoc).distinct(Addrobj.id)
                 #otherwise - all
                 self._stat[typ] = q.count()
 
@@ -510,7 +510,7 @@ class fias_AONode(fias_AO):
             if typ == 'found':
                 q = q.join(PlaceAssoc)
             elif typ == 'street':
-                q = q.join(StreetAssoc)
+                q = q.join(StreetAssoc).distinct(Addrobj.id)
             elif typ == 'not found':
                 q = q.options(joinedload(Addrobj.street))
                 q = q.options(joinedload(Addrobj.place))
