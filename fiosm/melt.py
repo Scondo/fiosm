@@ -371,6 +371,10 @@ class fias_AO(object):
         if t0 == 'all_low':
             return 0.2 * self.stat('all' + b + r)
         if t0 == 'not found':
+            #Try to pull saved stat
+            if not (('all' + b + r) in self._stat) and self.guid != None:
+                self.pullstatA()
+
             if r and ('all' + b not in self._stat):
                 self.CalcRecStat(typ, savemode)
             return self.stat('all' + b + r) - (self.stat('found_b' + r) if b else self.stat('all_found' + r))
