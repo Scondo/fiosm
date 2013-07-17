@@ -133,6 +133,11 @@ Desktop.ini
 
 *.py[co]
 
+#compiled libs and tools
+*.pyd
+*.dll
+*.exe
+
 # Packages
 *.egg
 *.egg-info
@@ -152,6 +157,7 @@ pip-log.txt
 # Unit test / coverage reports
 .coverage
 .tox
+*.pyprof
 
 #Translations
 *.mo
@@ -161,3 +167,7 @@ pip-log.txt
 
 # Mac crap
 .DS_Store
+
+#streetmangler
+streetmangler.py
+data
