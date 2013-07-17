@@ -337,14 +337,14 @@ class fias_AO(object):
                     self._stat['found_b'] = q.join(BuildAssoc).count()
 
     def CalcRecStat(self, typ, savemode=1):
-        res = self.stat(typ[:-2])
+        res = 0
+        for ao in self.subO('not found'):
+            res += fias_AONode(ao).stat(typ, savemode)
         for ao in self.subO('found'):
             res += fias_AONode(ao).stat(typ, savemode)
         for ao in self.subO('street'):
             res += ao.stat(typ[:-2])
-        for ao in self.subO('not found'):
-            res += fias_AONode(ao).stat(typ, savemode)
-        self._stat[typ] = res
+        self._stat[typ] = res + self.stat(typ[:-2])
 
     def pullstatA(self):
         '''Pull stat info from statistic obj'''
