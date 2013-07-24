@@ -5,13 +5,13 @@ Created on 01.04.2013
 '''
 from config import *
 import psycopg2
-conn = psycopg2.connect(connstr)
+conn = psycopg2.connect(psy_dsn)
 conn.autocommit = True
 cur = conn.cursor()
 
 from sqlalchemy import create_engine
 from melt import Base, Statistic, BuildAssoc, StreetAssoc, PlaceAssoc
-engine = create_engine("postgresql://{user}:{pass}@{host}/{db}".format(**conn_par), echo=False)
+engine = create_engine(al_dsn, echo=False)
 from argparse import ArgumentParser
 
 

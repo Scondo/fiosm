@@ -111,14 +111,13 @@ class fias_AO(object):
             guid = None
         if conn == None:
             #Connection must not be global to be more thread-safe
-            self.conn = psycopg2.connect(connstr)
+            self.conn = psycopg2.connect(psy_dsn)
             self.conn.autocommit = True
         else:
             #Yet we can share connection to keep ttheir number low
             self.conn = conn
         if session == None:
-            engine = create_engine("postgresql://{user}:{pass}@{host}/{db}".\
-                                   format(**conn_par), pool_size=2)
+            engine = create_engine(al_dsn, pool_size=2)
             Session = sessionmaker(expire_on_commit=False)
             self.session = Session(bind=engine)
         else:

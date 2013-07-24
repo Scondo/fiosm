@@ -362,10 +362,8 @@ if __name__ == "__main__":
     parser.add_argument("--fullfile")
     parser.add_argument("--fullver", type=int)
     args = parser.parse_args()
-    from config import conn_par
-    engine = create_engine("postgresql://{user}:{pass}@{host}/{db}".\
-                           format(**conn_par), echo=False,
-                           implicit_returning=False)
+    from config import al_dsn
+    engine = create_engine(al_dsn, echo=False, implicit_returning=False)
     Session.configure(bind=engine)
     session = Session()
     fias_db.Base.metadata.create_all(engine)

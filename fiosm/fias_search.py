@@ -208,37 +208,42 @@ def AssociateO(elem):
                     elem.session.add(assoc)
             elem.session.commit()
             AssociateO(sub_)
-    #search for new elements
+    #search for new areas
     subareas = Subareas(elem)
     for sub in tuple(elem.subO('not found', False)):
+        if sub.fullname in way_only:
+            continue
         sub_ = melt.fias_AONode(sub)
-        adm_id=None
-        if subareas and sub_.fullname not in way_only:
+        adm_id = None
+        if subareas:
             for name in sub_.names():
                 if name in subareas:
                     adm_id = subareas.pop(name)
                     break
-
-        if adm_id == None and sub_.fullname not in way_only:
-            adm_id=FindAssocPlace(sub_,elem.geom)
-        if not adm_id==None:
+        if adm_id is None:
+            adm_id = FindAssocPlace(sub_, elem.geom)
+        if not (adm_id is None):
             assoc = melt.PlaceAssoc(sub.f_id, adm_id)
             elem.session.add(assoc)
             elem.child_found(sub, 'found')
             sub_.osmid = adm_id
             sub_.kind = 2
             AssociateO(sub_)
-        elif sub_.fullname not in pl_only:
-            streets=FindAssocStreet(sub_,elem.geom)
-            if streets<>None:
-                for street in streets:
-                    assoc = melt.StreetAssoc(sub.f_id, street)
-                    elem.session.add(assoc)
-                elem.session.commit()
-                elem.child_found(sub, 'street')
-                sub_.kind = 1
-                sub_.osmid = streets[0]
-                AssociateO(sub_)
+    #search for new streets
+    for sub in tuple(elem.subO('not found', False)):
+        if sub.fullname in pl_only:
+            continue
+        sub_ = melt.fias_AONode(sub)
+        streets = FindAssocStreet(sub_, elem.geom)
+        if not streets is None:
+            for street in streets:
+                assoc = melt.StreetAssoc(sub.f_id, street)
+                elem.session.add(assoc)
+            elem.session.commit()
+            elem.child_found(sub, 'street')
+            sub_.kind = 1
+            sub_.osmid = streets[0]
+            AssociateO(sub_)
     elem.session.commit()
     #elem.stat('not found')
     #elem.stat('not found_b')
@@ -260,7 +265,7 @@ def AssocRegion(guid):
 
 
 def fedobj():
-    conn = melt.psycopg2.connect(melt.connstr)
+    conn = melt.psycopg2.connect(melt.psy_dsn)
     cur = conn.cursor()
     cur.execute("SELECT aoguid FROM fias_addr_obj WHERE (parentid is Null) and livestatus")
     res = cur.fetchall()

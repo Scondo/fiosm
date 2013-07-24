@@ -5,7 +5,7 @@ Created on 15.11.2012
 
 StreetMangler with some db addition
 '''
-from config import connstr
+from config import psy_dsn
 import psycopg2
 import logging
 
@@ -19,7 +19,7 @@ def InitMangle(no_guess=True):
     global conn,usable,db
     try:
         import streetmangler
-        conn=psycopg2.connect(connstr)
+        conn = psycopg2.connect(psy_dsn)
         conn.autocommit=True
         locale=streetmangler.Locale('ru_RU')
         db = streetmangler.Database(locale)
@@ -58,7 +58,7 @@ def AddMangleGuess(name):
     cur_.execute("INSERT INTO "+guess_tbl+" (name) VALUES (%s)",(name,))
 
 if __name__=='__main__':
-    conn=psycopg2.connect(connstr)
+    conn = psycopg2.connect(psy_dsn)
     conn.autocommit=True
     cur=conn.cursor()
     cur.execute("DROP TABLE IF EXISTS "+guess_tbl)
