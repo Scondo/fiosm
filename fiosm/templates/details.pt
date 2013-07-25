@@ -12,6 +12,10 @@
 </head><body><table class="fias" border="1" cellspaceing="1">
 	<tr><td colspan=2>${myself.name}</td></tr>
 	<tr>
+	<td>Тип объекта:</td>
+	<td>${myself.fullname}</td>
+	</tr>
+	<tr>
 	<td>Почтовый индекс:</td>
 	<td>${myself.fias.postalcode}</td>
 	</tr>
