@@ -113,23 +113,30 @@ class House(FiasRow, Base):
     statstatus = Column(SmallInteger)
     normdoc = deferred(Column(Integer))
 
-    @property
-    def onestr(self):
+    def makeonestr(self, space=u' '):
         _str = u''
         if self.housenum:
-            _str = _str + self.housenum + u' '
+            _str = _str + self.housenum + space
         if self.buildnum:
-            _str = _str + u'к' + self.buildnum + u' '
+            _str = _str + u'к' + self.buildnum + space
         if self.strucnum:
-            _str = _str + u'с' + self.strucnum + u' '
+            _str = _str + u'с' + self.strucnum + space
         return _str[:-1]
+
+    @property
+    def onestr(self):
+        return self.makeonestr()
 
     @property
     def name(self):
         return self.onestr
 
     def equal_to_str(self, guess):
-        return bool(self.onestr == guess)
+        if self.onestr.lower() == guess.lower():
+            return True
+        if self.makeonestr('').lower() == guess.lower():
+            return True
+        return False
 
 
 class Versions(Base):
