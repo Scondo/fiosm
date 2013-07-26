@@ -271,11 +271,11 @@ class fias_AO(object):
                     if name not in was:
                         yield name
                         was.add(name)
-
-        name_ = self.formalname if formal else self.offname
-        yield self.fullname + " " + name_
-        yield name_ + " " + self.fullname
-        yield name_
+        else:
+            name_ = self.formalname if formal else self.offname
+            yield self.fullname + " " + name_
+            yield name_ + " " + self.fullname
+            yield name_
 
     @property
     def parentguid(self):

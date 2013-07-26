@@ -129,23 +129,9 @@ def FindAssocPlace(elem, pgeom):
 
 def FindAssocStreet(elem, pgeom):
     session = elem.session
-    mangl_n = elem.maname(elem.formalname)
-    if mangl_n:
-        checked = FindByName(pgeom, elem.conn, mangl_n, prefix + ways_table,
+    for name in elem.names():
+        checked = FindByName(pgeom, elem.conn, name, prefix + ways_table,
                              " AND highway NOTNULL")
-        checked = filter(
-            lambda osmid: session.query(melt.StreetAssoc).get(osmid) is None,
-            checked)
-        if checked:
-            elem.name = mangl_n
-            return checked
-    (candidates, formal) = FindCandidates(pgeom, elem,
-                                          prefix + ways_table,
-                                          " AND highway NOTNULL")
-    if not candidates:
-        return None
-    for name in elem.names(formal):
-        checked = [it[1] for it in candidates if it[0].lower() == name.lower()]
         checked = filter(
             lambda osmid: session.query(melt.StreetAssoc).get(osmid) is None,
             checked)
@@ -162,10 +148,11 @@ def AssocBuild(elem, point):
     if not houses:
         return
     cur = elem.conn.cursor()
-    if point:
-        cur.execute("""SELECT osm_id, "addr:housenumber" FROM """ + prefix + point_table + """ WHERE "addr:street"=%s AND ST_Within(way,%s)""", (elem.name, elem.geom))
-    else:
-        cur.execute("""SELECT osm_id, "addr:housenumber" FROM """ + prefix + poly_table + """ WHERE "addr:street"=%s AND ST_Within(way,%s)""", (elem.name, elem.geom))
+    cur.execute('SELECT osm_id, "addr:housenumber" FROM ' +\
+                prefix + (point_table if point else poly_table) +\
+                ' WHERE "addr:street"=%s AND ST_Within(way,%s) AND'
+                '"addr:housenumber" IS NOT NULL',
+                (elem.name, elem.geom))
     osm_h = cur.fetchall()
     #Filtering of found is optimisation for updating and also remove POI with address
     #found_pre = set([h.onestr for h in elem.subO('found_b')])
@@ -186,11 +173,9 @@ def AssociateO(elem):
     This function should work for elements with partitially associated subs
     as well as elements without associated subs
     '''
-    global done
     if not elem.kind:
         return
-    AssocBuild(elem, 0)
-    AssocBuild(elem, 1)
+    #Precache subs list
     elem.subO('all', False)
     #run processing for found to parse their subs
     for sub in tuple(elem.subO('found', False)):
@@ -244,6 +229,10 @@ def AssociateO(elem):
             sub_.kind = 1
             sub_.osmid = streets[0]
             AssociateO(sub_)
+    #Search for buildings
+    AssocBuild(elem, 0)
+    AssocBuild(elem, 1)
+
     elem.session.commit()
     #elem.stat('not found')
     #elem.stat('not found_b')
