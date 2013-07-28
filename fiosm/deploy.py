@@ -129,11 +129,12 @@ def AssocBTableReCreate():
     Base.metadata.drop_all(engine, (BuildAssoc.__table__, ))
     Base.metadata.create_all(engine, (BuildAssoc.__table__, ))
 
+
 def AssocIdxCreate():
-    cur.execute("CREATE INDEX " + prefix + pl_aso_tbl + "_ao_id_idx ON " + prefix + pl_aso_tbl + """ USING btree (ao_id);
-CREATE INDEX """ + prefix + pl_aso_tbl + "_osm_admin_idx ON " + prefix + pl_aso_tbl + """ USING btree (osm_admin);""")
-    cur.execute("CREATE INDEX " + prefix + way_aso_tbl + "_ao_id_idx ON " + prefix + way_aso_tbl + """ USING btree (ao_id);
-CREATE INDEX """ + prefix + way_aso_tbl + "_osm_way_idx ON " + prefix + way_aso_tbl + """ USING btree (osm_way);""")
+    cur.execute("CREATE INDEX " + prefix + pl_aso_tbl + "_ao_id_idx ON " + \
+                prefix + pl_aso_tbl + " USING btree (ao_id)")
+    cur.execute("CREATE INDEX " + prefix + way_aso_tbl + "_ao_id_idx ON " + \
+                prefix + way_aso_tbl + " USING btree (ao_id);")
 
 
 def CleanupTableReCreate():
