@@ -149,9 +149,9 @@ def AssocBuild(elem, point):
         return
     cur = elem.conn.cursor()
     cur.execute('SELECT osm_id, "addr:housenumber" FROM ' +\
-                prefix + (point_table if point else poly_table) +\
-                ' WHERE "addr:street"=%s AND ST_Within(way,%s) AND'
-                '"addr:housenumber" IS NOT NULL',
+                prefix + (point_table if point else poly_table) + ' WHERE ' +\
+                ("addr:street" if elem.kind == 1 else "addr:place") + '=%s '
+                'AND ST_Within(way,%s) AND "addr:housenumber" IS NOT NULL',
                 (elem.name, elem.geom))
     osm_h = cur.fetchall()
     #Filtering of found is optimisation for updating and also remove POI with address
