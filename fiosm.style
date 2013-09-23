@@ -30,73 +30,21 @@ node,way   created_by   text         delete
 
 #node,way  access       text         linear
 node,way   addr:street  text         linear
+node,way   addr:place   text         linear
 node,way   addr:housenumber    text  linear
 node,way   kladr:user   text         linear
 #node,way  addr:interpolation  text  linear 
 node,way   admin_level  text         linear
-node,way   aerialway    text         delete
-node,way   aeroway      text         delete
-node,way   amenity      text         delete
 node,way   area         text         # hard coded support for area=1/yes => polygon is in osm2pgsql
-node,way   barrier      text         delete
-node,way   bicycle      text         delete
-node,way   brand        text         delete
-node,way   bridge       text         delete
 node,way   boundary     text         linear
 node,way   building     text         polygon
 node       capital      text         linear
-node,way   construction text         linear
-node,way   covered      text         delete
-node,way   culvert      text         delete
-node,way   cutting      text         delete
-node,way   denomination text         delete
-#node,way   disused      text         linear
-node       ele          text         delete
-node,way   embankment   text         delete
-node,way   foot         text         delete
-node,way   generator:source    text  delete
-node,way   harbour      text         delete
 node,way   highway      text         linear
-node,way   historic     text         delete
-node,way   horse        text         delete
-node,way   intermittent text         delete
-node,way   junction     text         delete
-node,way   landuse      text         delete
-node,way   layer        text         delete
-node,way   leisure      text         delete
-node,way   lock         text         delete
-node,way   man_made     text         polygon
-node,way   military     text         delete
-node,way   motorcar     text         delete
 node,way   name         text         linear
-node,way   natural      text         delete  # natural=coastline tags are discarded by a hard coded rule in osm2pgsql
-node,way   office       text         delete
 #node,way   oneway       text         linear
-node,way   operator     text         delete
 node,way   place        text         polygon
-node       poi          text         delete
-node,way   population   text         delete
-node,way   power        text         delete
-node,way   power_source text         delete
-node,way   public_transport text     delete
-node,way   railway      text         delete
-node,way   ref          text         delete
-node,way   religion     text         delete
-node,way   route        text         delete
-node,way   service      text         delete
-node,way   shop         text         delete
-node,way   sport        text         delete
-node,way   surface      text         delete
-node,way   toll         text         delete
-node,way   tourism      text         delete
-node,way   tower:type   text         delete
 #way        tracktype    text         linear
-#node,way   tunnel       text         linear
-node,way   water        text         delete
-node,way   waterway     text         delete
-node,way   wetland      text         delete
 #node,way   width        text         linear
-node,way   wood         text         delete
 #node,way   z_order      int4         linear # This is calculated during import
 #way        way_area     real                # This is calculated during import
 

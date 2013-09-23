@@ -9,9 +9,9 @@ mangledb.InitMangle(False)
 from config import *
 way_only = frozenset((u'улица', u'проезд', u'проспект', u'переулок', u'шоссе',
                       u'тупик', u'бульвар', u'проулок', u'набережная',
-                      u'дорога'))
+                      u'дорога', u'площадь'))
 pl_only = frozenset((u'город', u'район', u'территория', u'городок',
-                     u'деревня', u'поселок'))
+                     u'деревня', u'поселок', u'квартал'))
 
 
 def Subareas(elem):
@@ -138,6 +138,8 @@ def FindAssocStreet(elem, pgeom):
         if checked:
             #mangledb.AddMangleGuess(name)
             elem.name = name
+            #We must kill extra parts of multiline until we have native support
+            checked = list(set(checked))
             return checked
 
 
@@ -150,7 +152,7 @@ def AssocBuild(elem, point):
     cur = elem.conn.cursor()
     cur.execute('SELECT osm_id, "addr:housenumber" FROM ' +\
                 prefix + (point_table if point else poly_table) + ' WHERE ' +\
-                ("addr:street" if elem.kind == 1 else "addr:place") + '=%s '
+                ('"addr:street"' if elem.kind == 1 else '"addr:place"') + '=%s '
                 'AND ST_Within(way,%s) AND "addr:housenumber" IS NOT NULL',
                 (elem.name, elem.geom))
     osm_h = cur.fetchall()
@@ -159,7 +161,8 @@ def AssocBuild(elem, point):
     #osm_h = filter(lambda it: it[1] not in found_pre, osm_h)
     for hid, number in osm_h:
         for house in houses:
-            if house.equal_to_str(number):
+            if house.equal_to_str(number) and \
+               elem.session.query(melt.BuildAssoc).get((hid, point)) is None:
                 assoc = melt.BuildAssoc(house.houseguid, hid, point)
                 house.osm = assoc
                 elem.session.add(assoc)
@@ -221,6 +224,7 @@ def AssociateO(elem):
         sub_ = melt.fias_AONode(sub)
         streets = FindAssocStreet(sub_, elem.geom)
         if not streets is None:
+            #print sub.name, streets
             for street in streets:
                 assoc = melt.StreetAssoc(sub.f_id, street)
                 elem.session.add(assoc)

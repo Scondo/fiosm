@@ -81,9 +81,9 @@ class StreetAssoc(Base):
 class BuildAssoc(Base):
     __tablename__ = prefix + bld_aso_tbl
     h_guid = Column(UUID(as_uuid=True), ForeignKey("fias_house.houseguid"),
-                    primary_key=True)
-    osm_build = Column(BigInteger)
-    point = Column(SmallInteger)
+                    primary_key=False, index=True)
+    osm_build = Column(BigInteger, primary_key=True)
+    point = Column(SmallInteger, primary_key=True)
     fias = relationship("House",
                         backref=backref("osm", uselist=False, lazy=False),
                         uselist=False, lazy='joined')
