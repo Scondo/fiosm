@@ -8,8 +8,8 @@ CHANGES = open(os.path.join(here, 'CHANGES.txt')).read()
 
 requires = [
     'psycopg2', 'ppygis',
-    'argparse'
-    'pyramid', 'pyramid_debugtoolbar',
+    'argparse',
+    'pyramid', 'pyramid_debugtoolbar', 'pyramid_chameleon',
     'waitress',
     'sqlalchemy',
     'rarfile',
