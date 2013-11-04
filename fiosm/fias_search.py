@@ -87,10 +87,10 @@ def FindByName(pgeom, conn, name, tbl=prefix + ways_table, addcond=""):
     '''
     cur = conn.cursor()
     if pgeom == None:
-        cur.execute("SELECT osm_id FROM " + tbl + \
+        cur.execute("SELECT DISTINCT osm_id FROM " + tbl + \
                     " WHERE lower(name) = lower(%s)" + addcond, (name,))
     else:
-        cur.execute("SELECT osm_id FROM " + tbl + \
+        cur.execute("SELECT DISTINCT osm_id FROM " + tbl + \
                     " WHERE lower(name) = lower(%s) AND ST_Within(way,%s)" + \
                     addcond, (name, pgeom))
     return cur.fetchall()
@@ -139,7 +139,7 @@ def FindAssocStreet(elem, pgeom):
             #mangledb.AddMangleGuess(name)
             elem.name = name
             #We must kill extra parts of multiline until we have native support
-            checked = list(set(checked))
+            #checked = list(set(checked))
             return checked
 
 
