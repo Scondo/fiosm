@@ -29,12 +29,12 @@ node,way   source       text         delete   # This indicates that we shouldn't
 node,way   created_by   text         delete
 
 #node,way  access       text         linear
-node,way   addr:street  text         linear
-node,way   addr:place   text         linear
-node,way   addr:housenumber    text  linear
-node,way   kladr:user   text         linear
+node,way   addr:street  text         nocache
+node,way   addr:place   text         nocache
+node,way   addr:housenumber    text  nocache
+node,way   kladr:user   text         nocache
 #node,way  addr:interpolation  text  linear 
-node,way   admin_level  text         linear
+node,way   admin_level  text         nocache
 node,way   area         text         # hard coded support for area=1/yes => polygon is in osm2pgsql
 node,way   boundary     text         linear
 node,way   building     text         polygon
