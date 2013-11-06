@@ -345,6 +345,17 @@ class fias_AO(object):
             res += ao.stat(typ[:-2])
         self._stat[typ] = res + self.stat(typ[:-2])
 
+    @property
+    def stat_db_full(self):
+        stat = self.fias.stat
+        if stat is None:
+            return False
+        if self.kind == 1:
+            return True
+        if stat.all_r is None or stat.all_b_r is None:
+            return False
+        return True
+
     def pullstatA(self):
         '''Pull stat info from statistic obj'''
         stat = self.fias.stat
@@ -409,6 +420,7 @@ class fias_AO(object):
         b = ('all_b' in stat) and ('found_b' in stat)
         ar = ('all_r' in stat) and ('found_r' in stat) and ('street_r' in stat)
         br = ('all_b_r' in stat) and ('found_b_r' in stat)
+        #logging.warn(a, b, ar, br, mode)
         f = mode == 2 and a and b and ar and br
         statR = self.session.query(Statistic).get(self.f_id)
         if statR is None:
@@ -499,9 +511,7 @@ class fias_AONode(fias_AO):
             fias_AO.__init__(self, *args, **kwargs)
         self._subO = {}
 
-    def subO(self, typ, ao_stat=None):
-        if ao_stat is None:
-            ao_stat = True
+    def subO(self, typ, ao_stat=True):
         '''List of subelements'''
         if typ in self._subO:
             return self._subO[typ]

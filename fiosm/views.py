@@ -4,7 +4,7 @@ from pyramid.httpexceptions import HTTPBadRequest, HTTPNotFound
 import melt
 import uuid
 off_border = 100
-
+import logging
 
 @view_config(route_name='details', renderer='templates/details.pt')
 def details_view(request):
@@ -22,7 +22,8 @@ def details_view(request):
 def found_view(request):
     guid = request.matchdict["guid"]
     typ = request.matchdict["typ"]
-    if typ not in ('all', 'found', 'street', 'not found', 'all_b', 'found_b', 'not found_b'):
+    if typ not in ('all', 'found', 'street', 'not found',
+                   'all_b', 'found_b', 'not found_b'):
         raise HTTPBadRequest()
     if not guid:
         #root is ok
@@ -37,8 +38,8 @@ def found_view(request):
     myself = melt.fias_AONode(guid)
     if guid and not myself.isok:
         raise HTTPNotFound()
-
     alist = myself.subO(typ)
+    fullstat = all([it.stat_db_full for it in alist])
     if typ.endswith('_b'):
         alist.sort(key=lambda el: el.onestr)
     else:
@@ -51,21 +52,27 @@ def found_view(request):
         myself.offlinks = False
 
     def links(self, typ_l):
-        if typ_l in ('all', 'found', 'street', 'not found', 'all_b', 'found_b', 'not found_b'):
+        if typ_l in ('all', 'found', 'street', 'not found',
+                     'all_b', 'found_b', 'not found_b'):
             return request.route_url('found0', guid=self.guid, typ=typ_l)
         elif typ_l == 'details':
             return request.route_url('details', guid=self.guid, kind='ao')
         elif typ_l == 'top':
             if self.parent.guid:
-                return request.route_url('found0', guid=self.parentguid, typ='all')
+                return request.route_url('found0', guid=self.parentguid,
+                                         typ='all')
             else:
                 return request.route_url('foundroot0', typ='all')
         elif typ_l == "prev":
-            return request.route_url('found', guid=self.guid, typ=typ, offset=max(0, offset - off_border))
+            return request.route_url('found', guid=self.guid, typ=typ,
+                                     offset=max(0, offset - off_border))
         elif typ_l == "next":
-            return request.route_url('found', guid=self.guid, typ=typ, offset=min(self.stat(typ) - 1, offset + off_border))
+            return request.route_url('found', guid=self.guid, typ=typ,
+                                     offset=min(self.stat(typ) - 1,
+                                                offset + off_border))
 
-    return {"list": alist, "myself": myself, "links": links, 'bld': typ.endswith('_b')}
+    return {"list": alist, "myself": myself, "links": links,
+            'bld': typ.endswith('_b'), 'fullstat': fullstat}
 
 
 #Some defaults

@@ -35,42 +35,42 @@
 				<table class="mystat" cellspacing="1" border="1">
 					<tr>
 						<th colspan="2">Статистика:</th>
-						<th>с учетом вложенных:</th>
+						<th tal:condition="fullstat">с учетом вложенных:</th>
 					</tr>
 					<tr>
 						<td>Всего адресных элементов</td>
 						<td><a href="${links(myself,'all')}">${myself.stat('all')}</a></td>
-						<td>${myself.stat('all_r')}</td>
+						<td tal:condition="fullstat">${myself.stat('all_r')}</td>
 					</tr>
 					<tr>
 						<td>Найдено территорий</td>
 						<td><a href="${links(myself,'found')}">${myself.stat('found')}</a></td>
-						<td>${myself.stat('found_r')}</td>
+						<td tal:condition="fullstat">${myself.stat('found_r')}</td>
 					</tr>
 					<tr>
 						<td>Найдено улиц</td>
 						<td><a href="${links(myself,'street')}">${myself.stat('street')}</a></td>
-						<td>${myself.stat('street_r')}</td>
+						<td tal:condition="fullstat">${myself.stat('street_r')}</td>
 					</tr>
 					<tr>
 						<td>Не найдено</td>
 						<td><a href="${links(myself,'not found')}">${myself.stat('not found')}</a></td>
-						<td>${myself.stat('not found_r')}</td>
+						<td tal:condition="fullstat">${myself.stat('not found_r')}</td>
 					</tr>
 					<tr>
 						<td>Всего домов</td>
 						<td><a href="${links(myself,'all_b')}">${myself.stat('all_b')}</a></td>
-						<td>${myself.stat('all_b_r')}</td>
+						<td tal:condition="fullstat">${myself.stat('all_b_r')}</td>
 					</tr>
 					<tr>
 						<td>Найдено домов</td>
 						<td><a href="${links(myself,'found_b')}">${myself.stat('found_b')}</a></td>
-						<td>${myself.stat('found_b_r')}</td>
+						<td tal:condition="fullstat">${myself.stat('found_b_r')}</td>
 					</tr>
 					<tr>
 						<td>Не найдено домов</td>
 						<td><a href="${links(myself,'not found_b')}">${myself.stat('not found_b')}</a></td>
-						<td>${myself.stat('not found_b_r')}</td>
+						<td tal:condition="fullstat">${myself.stat('not found_b_r')}</td>
 					</tr>
 				</table>
 			</td>
