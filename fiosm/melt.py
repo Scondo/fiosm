@@ -94,6 +94,29 @@ class BuildAssoc(Base):
         self.point = point
 
 
+osm_base_link = u'http://www.openstreetmap.org/browse'
+
+
+def osm_link(osm_id):
+    if osm_id is None:
+        return u''
+    if osm_id < 0:
+        osm_type = u'relation'
+        osm_id = -1 * osm_id
+    else:
+        osm_type = u'way'
+    return '/'.join((osm_base_link, osm_type, unicode(osm_id)))
+
+
+def HouseOSMLink(self):
+    if self.osm is None:
+        return u''
+    elif self.osm.point == 0:
+        return osm_link(self.osm.osm_build)
+    elif self.osm.point == 1:
+        return '/'.join((osm_base_link, 'node', unicode(self.osm.osm_build)))
+
+
 def HouseTXTKind(self):
     if self.osm is None:
         return u'нет в ОСМ'
@@ -102,6 +125,7 @@ def HouseTXTKind(self):
     elif self.osm.point == 0:
         return u'полигон'
 House.txtkind = property(HouseTXTKind)
+House.osmlink = property(HouseOSMLink)
 
 
 class fias_AO(object):
@@ -480,6 +504,13 @@ class fias_AO(object):
     @osmid.setter
     def osmid(self, value):
         self._osmid = value
+
+    @property
+    def osmlink(self):
+        if self.osmid is None:
+            return u''
+        else:
+            return osm_link(self.osmid)
 
     @property
     def geom(self):

@@ -92,7 +92,7 @@
 		</thead>
 		<tr tal:repeat="row list">
 			<td><a tal:omit-tag="bld" href="${links(row,'all')}">${row.name}</a></td>
-			<td>${row.txtkind}</td>
+			<td><a tal:omit-tag="row.osmlink == ''" href="${row.osmlink}">${row.txtkind}</a></td>
 			<td tal:condition="not bld" class="metercol">
 			<meter class="meter" value="${row.stat('all_found')}" optimum="${row.stat('all')}"
 			max="${row.stat('all')}" low="${row.stat('all_low')}" high="${row.stat('all_high')}" 
