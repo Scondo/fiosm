@@ -38,7 +38,8 @@ def found_view(request):
     myself = melt.fias_AONode(guid)
     if guid and not myself.isok:
         raise HTTPNotFound()
-    fullstat = all([it.stat_db_full for it in myself.subO('all')])
+    fullstat = guid is not None and myself.stat_db_full
+    fullstat = fullstat or all([it.stat_db_full for it in myself.subO('all')])
     alist = myself.subO(typ)
     if typ.endswith('_b'):
         alist.sort(key=lambda el: el.onestr)
