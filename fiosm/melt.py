@@ -11,8 +11,7 @@ psycopg2.extensions.register_type(psycopg2.extensions.UNICODE)
 psycopg2.extensions.register_type(psycopg2.extensions.UNICODEARRAY)
 #import copy
 import logging
-
-import mangledb
+import nice_street
 from config import *
 
 socr_cache = {}
@@ -267,24 +266,14 @@ class fias_AO(object):
             return (self.fias.offname,)
         return (self.fias.offname, self.fias.formalname)
 
-    def maname(self, basename):
-        shortn = self.fias.shortname
-        if not mangledb.usable or self.kind == 2:
-            return
-        if not basename.endswith((self.fullname, shortn + ".")) and\
-           not basename.startswith((self.fullname, shortn + ".")):
-            basename = u" ".join((basename, shortn + "."))
-        ma = mangledb.db.CheckCanonicalForm(basename)
-        if ma:
-            return ma[0]
-
     def names(self, formal=None):
         if formal is None:
-            was = set()
-            mangled = self.maname(self.formalname)
-            if mangled:
-                yield mangled
-                was.add(mangled)
+            nice = nice_street.nice(self.formalname, self.fias.shortname,
+                                    self.fullname, self.kind == 2)
+            yield nice[0]
+            if nice[1] != nice[0]:
+                yield nice[1]
+            was = set(nice)
             if not(self.fias.formalname is None):
                 for name in self.names(True):
                     if name not in was:

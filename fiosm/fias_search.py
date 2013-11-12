@@ -2,10 +2,8 @@
 # -*- coding: UTF-8 -*-
 
 import melt
-import mangledb
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
-mangledb.InitMangle(False)
 from config import *
 way_only = frozenset((u'улица', u'проезд', u'проспект', u'переулок', u'шоссе',
                       u'тупик', u'бульвар', u'проулок', u'набережная',
@@ -109,22 +107,24 @@ def FindAssocPlace(elem, pgeom):
     if kladr:
         elem.name = kladr[0][0]
         return kladr[0][1]
-    #for name in elem.names():
-    #    checked = FindByName(pgeom, elem.conn, name, prefix + poly_table,
-    #                         " AND building ISNULL")
-    #    if checked:
-    #        elem.name = name
-    #        return checked[0]
-    (candidates, formal) = FindCandidates(pgeom, elem, prefix + poly_table,
-                                          " AND building ISNULL")
-    if not candidates:
-        return None
-    for name in elem.names(formal):
-        checked = [it[1] for it in candidates if it[0].lower() == name.lower()]
+    for name in elem.names():
+        checked = FindByName(pgeom, elem.conn, name, prefix + poly_table,
+                             " AND building ISNULL")
+        #if checked:
         for osmid in checked:
             if session.query(melt.PlaceAssoc).get(osmid) is None:
                 elem.name = name
                 return osmid
+    #(candidates, formal) = FindCandidates(pgeom, elem, prefix + poly_table,
+    #                                      " AND building ISNULL")
+    #if not candidates:
+    #    return None
+    #for name in elem.names(formal):
+    #    checked = [it[1] for it in candidates if it[0].lower() == name.lower()]
+    #    for osmid in checked:
+    #        if session.query(melt.PlaceAssoc).get(osmid) is None:
+    #            elem.name = name
+    #            return osmid
 
 
 def FindAssocStreet(elem, pgeom):
@@ -136,7 +136,6 @@ def FindAssocStreet(elem, pgeom):
             lambda osmid: session.query(melt.StreetAssoc).get(osmid) is None,
             checked)
         if checked:
-            #mangledb.AddMangleGuess(name)
             elem.name = name
             #We must kill extra parts of multiline until we have native support
             #checked = list(set(checked))
@@ -178,8 +177,6 @@ def AssociateO(elem):
     '''
     if not elem.kind:
         return
-    #Precache subs list
-    elem.subO('all', False)
     #run processing for found to parse their subs
     for sub in tuple(elem.subO('found', False)):
         AssociateO(melt.fias_AONode(sub))
@@ -254,7 +251,7 @@ def AssocRegion(guid):
 
     AssociateO(region)
     region.session.commit()
-    return ":".join((region.name, str(region.kind)))
+    return u":".join((region.name, str(region.kind)))
 
 
 def fedobj():
