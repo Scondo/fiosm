@@ -22,6 +22,7 @@ def details_view(request):
 def found_view(request):
     guid = request.matchdict["guid"]
     typ = request.matchdict["typ"]
+    bld = typ.endswith('_b')
     if typ not in ('all', 'found', 'street', 'not found',
                    'all_b', 'found_b', 'not found_b'):
         raise HTTPBadRequest()
@@ -40,11 +41,14 @@ def found_view(request):
         raise HTTPNotFound()
     fullstat = guid is not None and myself.stat_db_full
     fullstat = fullstat or all([it.stat_db_full for it in myself.subO('all')])
-    alist = myself.subO(typ)
-    if typ.endswith('_b'):
+
+    if bld:
+        alist = myself.subB(typ)
         alist.sort(key=lambda el: el.onestr)
     else:
+        alist = myself.subO(typ)
         alist.sort(key=lambda el: el.offname)
+
     if request.matchdict["offset"] or len(alist) > (off_border * 1.5):
         offset = int(request.matchdict['offset'])
         myself.offlinks = True
@@ -73,7 +77,7 @@ def found_view(request):
                                                 offset + off_border))
 
     return {"list": alist, "myself": myself, "links": links,
-            'bld': typ.endswith('_b'), 'fullstat': fullstat}
+            'bld': bld, 'fullstat': fullstat}
 
 
 #Some defaults

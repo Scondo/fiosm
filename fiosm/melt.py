@@ -152,6 +152,7 @@ class fias_AO(object):
         self._parent = parent
         self._stat = {}
         self._fias = None
+        self._subB = None  # cache all buildings
 
     @property
     def guid(self):
@@ -271,24 +272,25 @@ class fias_AO(object):
             nice = nice_street.nice(self.formalname, self.fias.shortname,
                                     self.fullname, self.kind == 2)
             yield nice[0]
-            if nice[1] != nice[0]:
-                yield nice[1]
-            was = set(nice)
+            was = set((nice[0]))
+            for name in self.names((nice[1])):
+                if name not in was:
+                    yield name
+                    was.add(name)
             if not(self.fias.formalname is None):
-                for name in self.names(True):
+                for name in self.names(self.formalname):
                     if name not in was:
                         yield name
                         was.add(name)
             if not(self.fias.offname is None):
-                for name in self.names(False):
+                for name in self.names(self.offname):
                     if name not in was:
                         yield name
                         was.add(name)
         else:
-            name_ = self.formalname if formal else self.offname
-            yield self.fullname + " " + name_
-            yield name_ + " " + self.fullname
-            yield name_
+            yield self.fullname + " " + formal
+            yield formal + " " + self.fullname
+            yield formal
 
     @property
     def parentguid(self):
@@ -308,6 +310,18 @@ class fias_AO(object):
     @property
     def isok(self):
         return (self.fias != None) or (self.guid == None)
+
+    def subB(self, typ):
+        if self._subB is None:
+            self._subB = self.session.query(House).\
+                            filter_by(ao_id=self.f_id).all()
+        if typ == 'all_b':
+            return self._subB
+        elif typ == 'found_b':
+            return filter(lambda h: h.osm is not None, self._subB)
+        elif typ == 'not found_b':
+            return filter(lambda h: h.osm is None, self._subB)
+
 
     def CalcAreaStat(self, typ):
         #check in pulled children
@@ -335,18 +349,7 @@ class fias_AO(object):
                 self._stat[typ] = 0
                 return
             #all building children are easily available from all_b
-            if hasattr(self, 'subO'):
-                self._stat[typ] = len(self.subO(typ))
-                return
-            #if not node
-            q = self.session.query(House).filter_by(ao_id=self.f_id)
-            if typ == 'all_b':
-                self._stat['all_b'] = q.count()
-            elif typ == 'found_b':
-                if self.stat('all_b') == 0 or self.kind == 0:
-                    self._stat['found_b'] = 0
-                else:
-                    self._stat['found_b'] = q.join(BuildAssoc).count()
+            self._stat[typ] = len(self.subB(typ))
 
     def CalcRecStat(self, typ, savemode=1):
         res = 0
@@ -573,16 +576,9 @@ class fias_AONode(fias_AO):
             res.extend(self.subO('found', ao_stat))
             res.extend(self.subO('street', ao_stat))
             return res
+        if typ.endswith('_b'):
+            return self.subB(typ)
 
-        if typ == 'all_b':
-            self._subO[typ] = self.session.query(House).\
-                            filter_by(ao_id=self.f_id).all()
-            return self._subO[typ]
-
-        if typ == 'found_b':
-            return filter(lambda h: h.osm is not None, self.subO('all_b'))
-        elif typ == 'not found_b':
-            return filter(lambda h: h.osm is None, self.subO('all_b'))
 
     def child_found(self, child, typ):
         if 'not found' in self._subO:

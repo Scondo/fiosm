@@ -1,9 +1,9 @@
 #!/usr/bin/python
 # -*- coding: UTF-8 -*-
 
-import melt
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
+import melt
 from config import *
 way_only = frozenset((u'улица', u'проезд', u'проспект', u'переулок', u'шоссе',
                       u'тупик', u'бульвар', u'проулок', u'набережная',
@@ -145,7 +145,7 @@ def FindAssocStreet(elem, pgeom):
 def AssocBuild(elem, point):
     '''Search and save building association for elem
     '''
-    houses = elem.subO('not found_b')
+    houses = elem.subB('not found_b')
     if not houses:
         return
     cur = elem.conn.cursor()
@@ -155,6 +155,11 @@ def AssocBuild(elem, point):
                 'AND ST_Within(way,%s) AND "addr:housenumber" IS NOT NULL',
                 (elem.name, elem.geom))
     osm_h = cur.fetchall()
+
+    #Fast build skip
+    #Get all points\polys within area
+    #Extra condition - not in buld_assoc
+
     #Filtering of found is optimisation for updating and also remove POI with address
     #found_pre = set([h.onestr for h in elem.subO('found_b')])
     #osm_h = filter(lambda it: it[1] not in found_pre, osm_h)
@@ -177,6 +182,9 @@ def AssociateO(elem):
     '''
     if not elem.kind:
         return
+    #Precache subs list
+    # practically it's 'not found', filling others subs as side-effect
+    elem.subO('all', False)
     #run processing for found to parse their subs
     for sub in tuple(elem.subO('found', False)):
         AssociateO(melt.fias_AONode(sub))
@@ -265,7 +273,8 @@ def fedobj():
 def AssORoot():
     '''Associate and process federal subject (they have no parent id and no parent geom)
     '''
-    print "Here we go!"
+
+    logging.info("Here we go!")
     for sub in fedobj():
         passed = AssocRegion(sub)
         logging.info(passed)
