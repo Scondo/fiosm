@@ -42,41 +42,6 @@ def Subareas(elem):
     return res
 
 
-def FindCandidates(pgeom, elem, tbl=prefix + poly_table, addcond=""):
-    '''Get elements that may be osm representation of elem
-    That items must contain part of elem's name full or formal (this will be returned)
-    and lies within polygon pgeom (polygon of parent territory)
-
-    return ( [(name, osmid),..],formal)
-    '''
-    cur = elem.conn.cursor()
-    formal = True
-    name = '%' + elem.formalname + '%'
-    if pgeom is None:
-        cur.execute("SELECT name, osm_id FROM " + tbl + \
-                    " WHERE lower(name) LIKE lower(%s)" + addcond, (name,))
-    else:
-        cur.execute("SELECT name, osm_id FROM " + tbl + \
-        " WHERE lower(name) LIKE lower(%s) AND ST_Within(way,%s)" + addcond,
-        (name, pgeom))
-    res = cur.fetchall()
-    if not res:
-        if elem.offname==None or elem.formalname==elem.offname:
-            return (None,None)
-        name='%'+elem.offname+'%'
-        if pgeom==None:
-            cur.execute("SELECT name, osm_id FROM "+tbl+" WHERE lower(name) LIKE lower(%s)"+addcond,(name,))
-        else:
-            cur.execute("SELECT name, osm_id FROM "+tbl+" WHERE lower(name) LIKE lower(%s) AND ST_Within(way,%s)"+addcond,(name,pgeom))
-        res=cur.fetchall()
-        if res:
-            formal=False
-        else:
-            return (None,None)
-    
-    return (res,formal)
-
-
 def FindByName(pgeom, conn, name, tbl=prefix + ways_table, addcond=""):
     '''Get osm representation of object 'name'
     That items must lies within polygon pgeom (polygon of parent territory)
@@ -110,21 +75,10 @@ def FindAssocPlace(elem, pgeom):
     for name in elem.names():
         checked = FindByName(pgeom, elem.conn, name, prefix + poly_table,
                              " AND building ISNULL")
-        #if checked:
         for osmid in checked:
             if session.query(melt.PlaceAssoc).get(osmid) is None:
                 elem.name = name
                 return osmid
-    #(candidates, formal) = FindCandidates(pgeom, elem, prefix + poly_table,
-    #                                      " AND building ISNULL")
-    #if not candidates:
-    #    return None
-    #for name in elem.names(formal):
-    #    checked = [it[1] for it in candidates if it[0].lower() == name.lower()]
-    #    for osmid in checked:
-    #        if session.query(melt.PlaceAssoc).get(osmid) is None:
-    #            elem.name = name
-    #            return osmid
 
 
 def FindAssocStreet(elem, pgeom):
@@ -155,10 +109,6 @@ def AssocBuild(elem, point):
                 'AND ST_Within(way,%s) AND "addr:housenumber" IS NOT NULL',
                 (elem.name, elem.geom))
     osm_h = cur.fetchall()
-
-    #Fast build skip
-    #Get all points\polys within area
-    #Extra condition - not in buld_assoc
 
     #Filtering of found is optimisation for updating and also remove POI with address
     #found_pre = set([h.onestr for h in elem.subO('found_b')])
