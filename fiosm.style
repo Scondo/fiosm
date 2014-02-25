@@ -36,11 +36,12 @@ node,way   kladr:user   text         nocache
 #node,way  addr:interpolation  text  linear 
 node,way   admin_level  text         nocache
 node,way   area         text         # hard coded support for area=1/yes => polygon is in osm2pgsql
-node,way   boundary     text         linear
+node,way   boundary     text         polygon
 node,way   building     text         polygon
 node       capital      text         linear
 node,way   highway      text         linear
-node,way   name         text         linear
+node,way   name         text         #no
+node,way   name:ru      text         #no
 #node,way   oneway       text         linear
 node,way   place        text         polygon
 #way        tracktype    text         linear

@@ -6,6 +6,8 @@ polygon_keys = { 'building', 'landuse', 'amenity', 'harbour', 'historic', 'leisu
 generic_keys = {'addr:housename','addr:housenumber','addr:interpolation','admin_level','amenity','barrier',
    'boundary','building','capital','highway','name','natural','place','poi',
    'railway','ref','service'}
+  
+hw_force_way = {'footway','pedestrian','unclassified','residental'}
 
 function filter_tags_node (keyvalues, nokeys)
 	filter = 1
@@ -48,7 +50,15 @@ function filter_tags_way (keyvalues, nokeys)
    elseif ((keyvalues["area"] == "no") or (keyvalues["area"] == "0") or (keyvalues["area"] == "false")) then
       poly = 0;
    end
-
+   
+   if ((poly == 1) and keyvalues['highway']) then
+       for i,k in ipairs(hw_force_way) do
+	       if keyvalues['highway'] == k then
+		       poly=0
+			   break
+		   end
+	   end
+   end
 
    return filter, keyvalues, poly, roads
 end
@@ -70,11 +80,13 @@ function filter_tags_relation_member (keyvalues, keyvaluemembers, roles, memberc
 
    if (type == "boundary") then
       boundary = 1
+	  polygon = 1
    end
-   if ((type == "multipolygon") and keyvalues["boundary"]) then
-      boundary = 1
-   elseif (type == "multipolygon") then
-      polygon = 1
+   if (type == "multipolygon") then
+	  if keyvalues["boundary"] then
+	      boundary = 1; -- ???
+	  end ;
+      polygon = 1;
       polytagcount = 0;
 	  -- check if mulltypolygon is tagged as polygon
       for i,k in ipairs(polygon_keys) do
@@ -92,6 +104,16 @@ function filter_tags_relation_member (keyvalues, keyvaluemembers, roles, memberc
             end
          end
       end
+	  if keyvalues['highway'] then
+          for i,k in ipairs(hw_force_way) do
+	          if keyvalues['highway'] == k then
+		          boundary=1
+				  polygon = 0 --???
+			      break
+		      end
+	      end
+      end
+
 	  --and check if we still need borders
 	  --every member
       for i = 1,membercount do
