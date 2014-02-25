@@ -314,6 +314,7 @@ class fias_AO(object):
     def subB(self, typ):
         if self._subB is None:
             self._subB = self.session.query(House).\
+                    options(joinedload(House.osm)).\
                             filter_by(ao_id=self.f_id).all()
         if typ == 'all_b':
             return self._subB
@@ -322,12 +323,12 @@ class fias_AO(object):
         elif typ == 'not found_b':
             return filter(lambda h: h.osm is None, self._subB)
 
-
     def CalcAreaStat(self, typ):
         #check in pulled children
-        if hasattr(self, '_subO') and typ in self._subO:
-                self._stat[typ] = len(self._subO[typ])
-        if typ in ('all', 'found', 'street'):
+        if hasattr(self, '_subO') and\
+        (typ in self._subO or (typ == 'all' and 'not found' in self._subO)):
+                self._stat[typ] = len(self.subO(typ))
+        elif typ in ('all', 'found', 'street'):
             if ('all' in self._stat and self._stat['all'] == 0) or\
             (self.kind == 0 and typ == 'found') or\
             (self.kind < 2 and typ == 'street'):
@@ -436,22 +437,22 @@ class fias_AO(object):
         b = ('all_b' in stat) and ('found_b' in stat)
         ar = ('all_r' in stat) and ('found_r' in stat) and ('street_r' in stat)
         br = ('all_b_r' in stat) and ('found_b_r' in stat)
-        #logging.warn(a, b, ar, br, mode)
         f = mode == 2 and a and b and ar and br
-        statR = self.session.query(Statistic).get(self.f_id)
-        if statR is None:
+        statR = self.fias.stat
+        if self.fias.stat is None:
             if a or b or ar or br:
                 statR = Statistic({"ao_id": self.f_id})
                 self.session.add(statR)
+                self.fias.stat = statR
             else:
                 return
         if (mode == 0 and a) or (mode == 1 and a and b) or f:
             statR.fromdic(stat)
-        if (mode == 0 and b) or (mode == 1 and a and b) or f:
+        elif (mode == 0 and b) or (mode == 1 and a and b) or f:
             statR.fromdic(stat)
-        if (mode == 0 and ar) or (mode == 1 and ar and br) or f:
+        elif (mode == 0 and ar) or (mode == 1 and ar and br) or f:
             statR.fromdic(stat)
-        if (mode == 0 and br) or (mode == 1 and ar and br) or f:
+        elif (mode == 0 and br) or (mode == 1 and ar and br) or f:
             statR.fromdic(stat)
         self.session.commit()
 

@@ -11,6 +11,42 @@ way_only = frozenset((u'улица', u'проезд', u'проспект', u'п�
 pl_only = frozenset((u'город', u'район', u'территория', u'городок',
                      u'деревня', u'поселок', u'квартал'))
 
+point_r = None
+poly_r = None
+way_r = None
+
+
+def InitPointR(conn):
+    """Init point restriction with already used buildings
+    """
+    global point_r
+    cur = conn.cursor()
+    # points are only buildings
+    cur.execute('SELECT osm_build FROM ' + prefix + bld_aso_tbl + ' WHERE point=1')
+    point_r = set([it[0] for it in cur.fetchall()])
+
+
+def InitPolyR(conn):
+    """Init poly restriction with already used buildings and places
+    """
+    global poly_r
+    cur = conn.cursor()
+    # points are only buildings
+    cur.execute('SELECT osm_build FROM ' + prefix + bld_aso_tbl + ' WHERE point=0')
+    poly_r = set([it[0] for it in cur.fetchall()])
+    cur.execute('SELECT osm_admin FROM ' + prefix + pl_aso_tbl)
+    poly_r.update([it[0] for it in cur.fetchall()])
+
+
+def InitWayR(conn):
+    """Init way restriction with already used streets
+    """
+    global way_r
+    cur = conn.cursor()
+    # points are only buildings
+    cur.execute('SELECT osm_way FROM ' + prefix + way_aso_tbl)
+    way_r = set([it[0] for it in cur.fetchall()])
+
 
 def Subareas(elem):
     '''Calculate subareas of relation by member role 'subarea'
@@ -67,60 +103,88 @@ def FindByKladr(elem, tbl=prefix + poly_table, addcond=""):
 
 
 def FindAssocPlace(elem, pgeom):
+    def check_adm(osmid):
+        if poly_r is not None:
+            return osmid not in poly_r
+        return session.query(melt.PlaceAssoc).get(osmid) is None
+
     session = elem.session
     kladr = FindByKladr(elem, addcond=" AND building ISNULL")
-    if kladr:
+    if kladr and check_adm(kladr[0][1]):
         elem.name = kladr[0][0]
+        if poly_r is not None:
+            poly_r.add(kladr[0][1])
         return kladr[0][1]
     for name in elem.names():
         checked = FindByName(pgeom, elem.conn, name, prefix + poly_table,
                              " AND building ISNULL")
         for osmid in checked:
-            if session.query(melt.PlaceAssoc).get(osmid) is None:
+            if check_adm(osmid[0]):
                 elem.name = name
+                if poly_r is not None:
+                    poly_r.add(osmid[0])
                 return osmid
 
 
 def FindAssocStreet(elem, pgeom):
+    def check_street(osmid):
+        if way_r is not None:
+            return osmid[0] not in way_r
+        return session.query(melt.StreetAssoc).get(osmid[0]) is None
+
     session = elem.session
     for name in elem.names():
         checked = FindByName(pgeom, elem.conn, name, prefix + ways_table,
                              " AND highway NOTNULL")
-        checked = filter(
-            lambda osmid: session.query(melt.StreetAssoc).get(osmid) is None,
-            checked)
+        checked = filter(check_street, checked)
         if checked:
             elem.name = name
-            #We must kill extra parts of multiline until we have native support
-            #checked = list(set(checked))
+            if way_r is not None:
+                way_r.update([it[0] for it in checked])
             return checked
 
 
 def AssocBuild(elem, point):
     '''Search and save building association for elem
     '''
+    def check_bld(osmid):
+        if point:
+            if point_r is not None:
+                return not (osmid in point_r)
+        else:
+            if poly_r is not None:
+                return not (osmid in poly_r)
+        return elem.session.query(melt.BuildAssoc).get((osmid, point)) is None
+
     houses = elem.subB('not found_b')
     if not houses:
         return
     cur = elem.conn.cursor()
     cur.execute('SELECT osm_id, "addr:housenumber" FROM ' +\
                 prefix + (point_table if point else poly_table) + ' WHERE ' +\
-                ('"addr:street"' if elem.kind == 1 else '"addr:place"') + '=%s '
-                'AND ST_Within(way,%s) AND "addr:housenumber" IS NOT NULL',
+                ('"addr:street"' if elem.kind == 1 else '"addr:place"') + '=%s'
+                ' AND ST_Within(way,%s) AND "addr:housenumber" IS NOT NULL',
                 (elem.name, elem.geom))
     osm_h = cur.fetchall()
 
-    #Filtering of found is optimisation for updating and also remove POI with address
+    #Filtering of found is optimisation for updating
+    #and also remove POI with address
     #found_pre = set([h.onestr for h in elem.subO('found_b')])
     #osm_h = filter(lambda it: it[1] not in found_pre, osm_h)
     for hid, number in osm_h:
         for house in houses:
-            if house.equal_to_str(number) and \
-               elem.session.query(melt.BuildAssoc).get((hid, point)) is None:
+            if house.equal_to_str(number) and check_bld(hid):
                 assoc = melt.BuildAssoc(house.houseguid, hid, point)
                 house.osm = assoc
                 elem.session.add(assoc)
                 houses.remove(house)
+                if point:
+                    if point_r is not None:
+                        point_r.add(hid)
+                else:
+                    if poly_r is not None:
+                        poly_r.add(hid)
+
                 break
 
 
@@ -134,12 +198,12 @@ def AssociateO(elem):
         return
     #Precache subs list
     # practically it's 'not found', filling others subs as side-effect
-    elem.subO('all', False)
+    elem.subO('all', True)
     #run processing for found to parse their subs
-    for sub in tuple(elem.subO('found', False)):
+    for sub in tuple(elem.subO('found', True)):
         AssociateO(melt.fias_AONode(sub))
     #find new elements for street if any
-    for sub in tuple(elem.subO('street', False)):
+    for sub in tuple(elem.subO('street', True)):
         sub_ = melt.fias_AONode(sub)
         streets=FindAssocStreet(sub_,elem.geom)
         if streets<>None:
@@ -153,7 +217,7 @@ def AssociateO(elem):
             AssociateO(sub_)
     #search for new areas
     subareas = Subareas(elem)
-    for sub in tuple(elem.subO('not found', False)):
+    for sub in tuple(elem.subO('not found', True)):
         if sub.fullname in way_only:
             continue
         sub_ = melt.fias_AONode(sub)
@@ -179,7 +243,6 @@ def AssociateO(elem):
         sub_ = melt.fias_AONode(sub)
         streets = FindAssocStreet(sub_, elem.geom)
         if not streets is None:
-            #print sub.name, streets
             for street in streets:
                 assoc = melt.StreetAssoc(sub.f_id, street)
                 elem.session.add(assoc)
@@ -192,9 +255,9 @@ def AssociateO(elem):
     AssocBuild(elem, 0)
     AssocBuild(elem, 1)
 
+    elem.stat('not found', 1)
+    elem.stat('not found_b', 1)
     elem.session.commit()
-    #elem.stat('not found')
-    #elem.stat('not found_b')
 
 
 def AssocRegion(guid):
@@ -225,6 +288,11 @@ def AssORoot():
     '''
 
     logging.info("Here we go!")
+    conn = melt.psycopg2.connect(melt.psy_dsn)
+    InitPointR(conn)
+    InitPolyR(conn)
+    InitWayR(conn)
+    logging.info("Restriction cached")
     for sub in fedobj():
         passed = AssocRegion(sub)
         logging.info(passed)
