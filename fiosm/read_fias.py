@@ -13,6 +13,7 @@ from datetime import date
 today = date.today()
 import logging
 from urllib import urlretrieve, urlcleanup
+from urllib2 import URLError
 from os.path import exists
 import rarfile
 updating = ("normdoc", "addrobj", "socrbase", "house")
@@ -38,29 +39,24 @@ class FiasFiles(object):
             self.full_temp = None
             self.fias_list = {}
             try:
-                from pysimplesoap import client
-                client.TIMEOUT = None
-                fias = client.SoapClient(\
-                        wsdl="http://fias.nalog.ru/WebServices"
-                         "/Public/DownloadService.asmx?WSDL", trace=False)
-                fias_list_raw = fias.GetAllDownloadFileInfo()
-                if fias_list_raw and \
-                    'GetAllDownloadFileInfoResult' in fias_list_raw:
-                    for it in fias_list_raw['GetAllDownloadFileInfoResult']:
-                        one = it['DownloadFileInfo']
+                from suds.client import Client
+                fias = Client("http://fias.nalog.ru/WebServices/Public/DownloadService.asmx?WSDL")
+                fias_list_raw = fias.service.GetAllDownloadFileInfo()
+                if fias_list_raw:
+                    for it in fias_list_raw.DownloadFileInfo:
                         ver = session.query(fias_db.Versions).\
-                                    get(one['VersionId'])
+                                    get(it.VersionId)
                         if ver is None:
-                            ver = fias_db.Versions(one['VersionId'])
+                            ver = fias_db.Versions(it.VersionId)
                             session.add(ver)
-                        dumpdate = one['TextVersion'][-10:].split('.')
+                        dumpdate = it.TextVersion[-10:].split('.')
                         ver.dumpdate = date(int(dumpdate[2]),
                                             int(dumpdate[1]),
                                             int(dumpdate[0]))
-                        del one['VersionId']
-                        self.fias_list[ver.ver] = one
+                        self.fias_list[ver.ver] = it
                     session.commit()
-            except:
+            except URLError as e:
+                logging.warn(e)
                 pass
         return cls.instance
 
@@ -72,7 +68,7 @@ class FiasFiles(object):
 
     def get_fullarch(self):
         if self.full_file == None or not exists(self.full_file):
-            urlretrieve(self.fias_list[self.maxver()]['FiasCompleteXmlUrl'],
+            urlretrieve(self.fias_list[self.maxver()].FiasCompleteXmlUrl,
                         self.full_file)
             self.full_ver = self.maxver()
 
@@ -99,7 +95,7 @@ class FiasFiles(object):
                 return (arch.open(filename), self.full_ver)
 
     def get_updfile(self, table, ver):
-        archfile = urlretrieve(self.fias_list[ver]['FiasDeltaXmlUrl'])
+        archfile = urlretrieve(self.fias_list[ver].FiasDeltaXmlUrl)
         arch = rarfile.RarFile(archfile)
         for filename in arch.namelist():
             if filename.lower().beginswith(table):
@@ -150,9 +146,9 @@ class GuidId(object):
                 idO = None
             elif self.local == False:
                 idO = self.getrec(guid)
-            elif self.local is None:
-                self.chklocal()
-                return self.getid(guid)
+            elif self.local is None:  # not initialized
+                self.chklocal()  # initialize local state
+                return self.getid(guid)  # re-call self
             else:
                 raise AssertionError('wrong cache state')
 
