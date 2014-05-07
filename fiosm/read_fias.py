@@ -68,8 +68,9 @@ class FiasFiles(object):
 
     def get_fullarch(self):
         if self.full_file == None or not exists(self.full_file):
-            urlretrieve(self.fias_list[self.maxver()].FiasCompleteXmlUrl,
-                        self.full_file)
+            self.full_file = urlretrieve(
+                            self.fias_list[self.maxver()].FiasCompleteXmlUrl,
+                            self.full_file)[0]
             self.full_ver = self.maxver()
 
     def get_fullfile(self, table):
