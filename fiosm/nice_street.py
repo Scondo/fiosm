@@ -28,6 +28,17 @@ def unslash(basename):
 
 def nice(basename, shortname, fullname, place=False):
     basename = unslash(basename)
+    # Few predefined states (supp. area)
+    if fullname == u'город':
+        return (u" ".join((fullname, basename)),)
+    elif fullname == u'область':
+        return (u" ".join((basename, fullname)),)
+    elif fullname == u'край':
+        return (u" ".join((basename, fullname)),)
+    elif fullname == u'чувашия':  # Stupid, but real
+        return (u" ".join((basename, u'Чувашия')),)
+
+    # Check when state part already in name
     if not basename.endswith((fullname, shortname + ".")) and\
        not basename.startswith((fullname, shortname + ".")):
         basename_ = u" ".join((fullname, basename))
