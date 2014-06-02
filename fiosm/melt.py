@@ -1,18 +1,18 @@
 #!/usr/bin/python
 # -*- coding: UTF-8 -*-
 from __future__ import division
-import psycopg2
-import ppygis
-#import psycopg2.extras
-#import uuid
-#psycopg2.extras.register_uuid()
-import psycopg2.extensions
-psycopg2.extensions.register_type(psycopg2.extensions.UNICODE)
-psycopg2.extensions.register_type(psycopg2.extensions.UNICODEARRAY)
+from config import *
+if use_osm:
+    import psycopg2
+    import ppygis
+    import psycopg2.extensions
+    psycopg2.extensions.register_type(psycopg2.extensions.UNICODE)
+    psycopg2.extensions.register_type(psycopg2.extensions.UNICODEARRAY)
+else:
+    psycopg2 = None
 #import copy
 import logging
 import nice_street
-from config import *
 
 socr_cache = {}
 #with keys socr#aolev
@@ -29,68 +29,65 @@ from sqlalchemy.orm import relationship, backref, joinedload
 from sqlalchemy import ForeignKey, Column, Integer, BigInteger, SmallInteger
 from fias_db import Base, Socrbase, House, Addrobj, UUID
 
+if use_osm:
+    class Statistic(Base):
+        __tablename__ = 'fiosm_stat'
+        ao_id = Column(Integer, ForeignKey("fias_addr_obj.id"), primary_key=True)
+        ao_all = Column(Integer)
+        found = Column(Integer)
+        street = Column(Integer)
+        all_b = Column(Integer)
+        found_b = Column(Integer)
+        all_r = Column(Integer)
+        found_r = Column(Integer)
+        street_r = Column(Integer)
+        all_b_r = Column(Integer)
+        found_b_r = Column(Integer)
+        fias = relationship("Addrobj", backref=backref("stat", uselist=False),
+                            uselist=False)
 
-class Statistic(Base):
-    __tablename__ = 'fiosm_stat'
-    ao_id = Column(Integer, ForeignKey("fias_addr_obj.id"), primary_key=True)
-    ao_all = Column(Integer)
-    found = Column(Integer)
-    street = Column(Integer)
-    all_b = Column(Integer)
-    found_b = Column(Integer)
-    all_r = Column(Integer)
-    found_r = Column(Integer)
-    street_r = Column(Integer)
-    all_b_r = Column(Integer)
-    found_b_r = Column(Integer)
-    fias = relationship("Addrobj", backref=backref("stat", uselist=False),
-                        uselist=False)
+        def fromdic(self, dic):
+            for it in dic.iteritems():
+                setattr(self, 'ao_all' if it[0] == 'all' else it[0], it[1])
 
-    def fromdic(self, dic):
-        for it in dic.iteritems():
-            setattr(self, 'ao_all' if it[0] == 'all' else it[0], it[1])
+        def __init__(self, dic):
+            self.fromdic(dic)
 
-    def __init__(self, dic):
-        self.fromdic(dic)
+    class PlaceAssoc(Base):
+        __tablename__ = prefix + pl_aso_tbl
+        ao_id = Column(Integer, ForeignKey("fias_addr_obj.id"))
+        osm_admin = Column(BigInteger, primary_key=True)
+        fias = relationship("Addrobj", backref=backref("place", uselist=False),
+                            uselist=False)
 
+        def __init__(self, f_id, osmid):
+            self.ao_id = f_id
+            self.osm_admin = osmid
 
-class PlaceAssoc(Base):
-    __tablename__ = prefix + pl_aso_tbl
-    ao_id = Column(Integer, ForeignKey("fias_addr_obj.id"))
-    osm_admin = Column(BigInteger, primary_key=True)
-    fias = relationship("Addrobj", backref=backref("place", uselist=False),
-                        uselist=False)
+    class StreetAssoc(Base):
+        __tablename__ = prefix + way_aso_tbl
+        ao_id = Column(Integer, ForeignKey("fias_addr_obj.id"))
+        osm_way = Column(BigInteger, primary_key=True)
+        fias = relationship("Addrobj", backref=backref("street"), uselist=False)
 
-    def __init__(self, f_id, osmid):
-        self.ao_id = f_id
-        self.osm_admin = osmid
+        def __init__(self, f_id, osmid):
+            self.ao_id = f_id
+            self.osm_way = osmid
 
+    class BuildAssoc(Base):
+        __tablename__ = prefix + bld_aso_tbl
+        h_guid = Column(UUID(as_uuid=True), ForeignKey("fias_house.houseguid"),
+                        primary_key=False, index=True)
+        osm_build = Column(BigInteger, primary_key=True)
+        point = Column(SmallInteger, primary_key=True)
+        fias = relationship("House",
+                            backref=backref("osm", uselist=False, lazy=False),
+                            uselist=False, lazy='joined')
 
-class StreetAssoc(Base):
-    __tablename__ = prefix + way_aso_tbl
-    ao_id = Column(Integer, ForeignKey("fias_addr_obj.id"))
-    osm_way = Column(BigInteger, primary_key=True)
-    fias = relationship("Addrobj", backref=backref("street"), uselist=False)
-
-    def __init__(self, f_id, osmid):
-        self.ao_id = f_id
-        self.osm_way = osmid
-
-
-class BuildAssoc(Base):
-    __tablename__ = prefix + bld_aso_tbl
-    h_guid = Column(UUID(as_uuid=True), ForeignKey("fias_house.houseguid"),
-                    primary_key=False, index=True)
-    osm_build = Column(BigInteger, primary_key=True)
-    point = Column(SmallInteger, primary_key=True)
-    fias = relationship("House",
-                        backref=backref("osm", uselist=False, lazy=False),
-                        uselist=False, lazy='joined')
-
-    def __init__(self, h_guid, osmid, point):
-        self.h_guid = h_guid
-        self.osm_build = osmid
-        self.point = point
+        def __init__(self, h_guid, osmid, point):
+            self.osm_build = osmid
+            self.point = point
+            self.h_guid = h_guid
 
 
 osm_base_link = u'http://www.openstreetmap.org/browse'
@@ -123,8 +120,12 @@ def HouseTXTKind(self):
         return u'точка'
     elif self.osm.point == 0:
         return u'полигон'
-House.txtkind = property(HouseTXTKind)
-House.osmlink = property(HouseOSMLink)
+if use_osm:
+    House.txtkind = property(HouseTXTKind)
+    House.osmlink = property(HouseOSMLink)
+else:
+    House.txtkind = u'ОСМ отключен'
+    House.osmlink = u''
 
 
 class fias_AO(object):
@@ -132,12 +133,18 @@ class fias_AO(object):
                  conn=None, session=None):
         if not guid:
             guid = None
-        if conn == None:
+        elif isinstance(guid, Addrobj):
+            self._fias = guid
+            self._guid = None
+        else:
+            self._guid = guid
+            self._fias = None
+        if conn == None and psycopg2:
             #Connection must not be global to be more thread-safe
             self.conn = psycopg2.connect(psy_dsn)
             self.conn.autocommit = True
         else:
-            #Yet we can share connection to keep ttheir number low
+            #Yet we can share connection to keep their number low
             self.conn = conn
         if session == None:
             engine = create_engine(al_dsn, pool_size=2)
@@ -145,13 +152,11 @@ class fias_AO(object):
             self.session = Session(bind=engine)
         else:
             self.session = session
-        self._guid = guid
         self._osmid = osmid
         self._osmkind = None
         self.setkind(kind)
         self._parent = parent
         self._stat = {}
-        self._fias = None
         self._subB = None  # cache all buildings
 
     @property
@@ -165,6 +170,9 @@ class fias_AO(object):
         return self.fias.id
 
     def calkind(self):
+        if not use_osm:
+            self._kind = 0
+            return
         #'found'
         cid = self.fias.place
         if cid is not None:
@@ -235,9 +243,11 @@ class fias_AO(object):
             self.getFiasData()
         return self._fias
 
-    @property
-    def offname(self):
-        return self.fias.offname
+    def __getattr__(self, name):
+        if not name.startswith('_') and hasattr(self.fias, name):
+            return getattr(self.fias, name)
+        else:
+            raise AttributeError
 
     @property
     def formalname(self):
@@ -313,9 +323,10 @@ class fias_AO(object):
 
     def subB(self, typ):
         if self._subB is None:
-            self._subB = self.session.query(House).\
-                    options(joinedload(House.osm)).\
-                            filter_by(ao_id=self.f_id).all()
+            q = self.session.query(House)
+            if use_osm:
+                q = q.options(joinedload(House.osm))
+            self._subB = q.filter_by(ao_id=self.f_id).all()
         if typ == 'all_b':
             return self._subB
         elif typ == 'found_b':
@@ -364,6 +375,8 @@ class fias_AO(object):
 
     @property
     def stat_db_full(self):
+        if not use_osm:
+            return False
         stat = self.fias.stat
         if stat is None:
             return False
@@ -388,6 +401,8 @@ class fias_AO(object):
 
     def stat(self, typ, savemode=0):
         '''Statistic of childs for item'''
+        if not use_osm:
+            return 0
         #Calculable values
         (r, t0) = ('_r', typ[:-2]) if typ.endswith('_r') else ('', typ)
         (b, t0) = ('_b', t0[:-2]) if t0.endswith('_b') else ('', t0)
@@ -463,15 +478,18 @@ class fias_AO(object):
             return u"Россия"
 
         if not hasattr(self, '_name'):
-            cur = self.conn.cursor()
-            if self.kind == 2:
-                cur.execute('SELECT name FROM ' + prefix + poly_table + \
-                            '  WHERE osm_id=%s ', (self.osmid,))
-                name = cur.fetchone()
-            elif self.kind == 1:
-                cur.execute('SELECT name FROM ' + prefix + ways_table + \
-                            '  WHERE osm_id=%s ', (self.osmid,))
-                name = cur.fetchone()
+            if self.conn and self.kind:
+                cur = self.conn.cursor()
+                if self.kind == 2:
+                    cur.execute('SELECT name FROM ' + prefix + poly_table + \
+                                '  WHERE osm_id=%s ', (self.osmid,))
+                    name = cur.fetchone()
+                elif self.kind == 1:
+                    cur.execute('SELECT name FROM ' + prefix + ways_table + \
+                                '  WHERE osm_id=%s ', (self.osmid,))
+                    name = cur.fetchone()
+                else:
+                    name = None
             else:
                 name = None
             if name:
@@ -508,7 +526,7 @@ class fias_AO(object):
     @property
     def geom(self):
         '''Geometry where buildings can be'''
-        if not self.guid:
+        if not self.guid or not use_osm:
             return None
         if hasattr(self,'_geom'):
             return self._geom
