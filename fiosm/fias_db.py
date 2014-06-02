@@ -6,9 +6,11 @@ Created on 18.05.2013
 '''
 from sqlalchemy import Integer, BigInteger, SmallInteger, String, Date, Boolean
 from sqlalchemy import Sequence, Column, ForeignKey
+from sqlalchemy.orm.properties import ColumnProperty
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import deferred, relationship
+from sqlalchemy.orm import object_mapper
 from datetime import date
 Base = declarative_base()
 
@@ -21,6 +23,21 @@ class FiasRow(object):
     def __init__(self, dic=None):
         if dic is not None:
             self.fromdic(dic)
+
+    def collist(self):
+        for attr in object_mapper(self).attrs:
+            if isinstance(attr, ColumnProperty):
+                yield attr.key
+
+    def asdic(self, collist=None, withnone=True):
+        res = {}
+        if collist is None:
+            collist = self.collist()
+        for col in collist:
+            val = getattr(self, col)
+            if val is not None or withnone:
+                res[col] = val
+        return res
 
 
 class Socrbase(FiasRow, Base):
@@ -48,9 +65,9 @@ class Addrobj(FiasRow, Base):
     id = Column(Integer, primary_key=True)
     parentid = Column(Integer, ForeignKey('fias_addr_obj.id'), index=True)
     parent = relationship("Addrobj", remote_side=[id], uselist=False)
-    aoid = deferred(Column(UUID))
-    previd = deferred(Column(UUID))
-    nextid = deferred(Column(UUID))
+    aoid = deferred(Column(UUID(as_uuid=True)))
+    previd = deferred(Column(UUID(as_uuid=True)))
+    nextid = deferred(Column(UUID(as_uuid=True)))
     startdate = deferred(Column(Date, default=date(1900, 1, 1)))
     enddate = deferred(Column(Date, default=date(2100, 1, 1)))
 
@@ -78,7 +95,8 @@ class Addrobj(FiasRow, Base):
     ifnsul = deferred(Column(SmallInteger))
     terrifnsul = deferred(Column(SmallInteger))
     okato = deferred(Column(BigInteger))
-    oktmo = deferred(Column(Integer))
+    oktmo = deferred(Column(String(11)))
+
     updatedate = deferred(Column(Date))
     actstatus = deferred(Column(SmallInteger))
     centstatus = deferred(Column(SmallInteger))
@@ -91,7 +109,7 @@ class Addrobj(FiasRow, Base):
 class House(FiasRow, Base):
     __tablename__ = 'fias_house'
     houseguid = Column(UUID(as_uuid=True), primary_key=True)
-    houseid = Column(UUID)
+    houseid = Column(UUID(as_uuid=True))
     startdate = Column(Date)
     enddate = Column(Date)
 
@@ -139,7 +157,7 @@ class House(FiasRow, Base):
         return False
 
 
-class Versions(Base):
+class Versions(FiasRow, Base):
     __tablename__ = "fias_versions"
     ver = Column(Integer, primary_key=True)
     date = Column(Date)
