@@ -133,7 +133,7 @@ class fias_AO(object):
                  conn=None, session=None):
         if not guid:
             guid = None
-        elif isinstance(guid, Addrobj):
+        if isinstance(guid, Addrobj):
             self._fias = guid
             self._guid = None
         else:
