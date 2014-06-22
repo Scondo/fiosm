@@ -109,3 +109,15 @@ def foundroot0_view(request):
 def found0_view(request):
     request.matchdict["offset"] = 0
     return found_view(request)
+
+
+@view_config(route_name='rest_buildings', renderer='templates/rest_buildings.pt')
+def rest_buildings_view(request):
+    #Make check for malformed guid
+    try:
+        ao_guid = uuid.UUID(request.matchdict["ao_guid"])
+    except ValueError:
+        raise HTTPBadRequest()
+    myself = melt.fias_AO(ao_guid)
+    request.response.content_type = 'text/xml'
+    return {"list": myself.subB('all_b')}

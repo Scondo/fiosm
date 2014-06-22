@@ -1,0 +1,1 @@
+<?xml version="1.0"?><buildings xmlns:tal="http://xml.zope.org/namespaces/tal"><building tal:repeat="bld list"><guid>${bld.houseguid}</guid><onestr>${bld.onestr}</onestr></building></buildings>
