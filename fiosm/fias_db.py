@@ -7,12 +7,48 @@ Created on 18.05.2013
 from sqlalchemy import Integer, BigInteger, SmallInteger, String, Date, Boolean
 from sqlalchemy import Sequence, Column, ForeignKey
 from sqlalchemy.orm.properties import ColumnProperty
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import deferred, relationship
 from sqlalchemy.orm import object_mapper
 from datetime import date
 Base = declarative_base()
+
+
+from sqlalchemy.types import TypeDecorator, CHAR
+from sqlalchemy.dialects.postgresql import UUID as pg_UUID
+import uuid
+
+
+class GUID(TypeDecorator):
+    """Platform-independent GUID type.
+    Uses Postgresql’s UUID type, otherwise uses
+    CHAR(32), storing as stringified hex values.
+    """
+    impl = CHAR
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(pg_UUID())
+        else:
+            return dialect.type_descriptor(CHAR(32))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        elif dialect.name == "postgresql":
+            return str(value)
+        else:
+            if not isinstance(value, uuid.UUID):
+                return uuid.UUID(value).hex
+            else:
+                # hexstring
+                return value.hex
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        else:
+            return uuid.UUID(value)
 
 
 class FiasRow(object):
@@ -50,8 +86,8 @@ class Socrbase(FiasRow, Base):
 
 class Normdoc(FiasRow, Base):
     __tablename__ = 'fias_normdoc'
-    id = Column(Integer, Sequence('inner_id'))
-    normdocid = Column(UUID(as_uuid=True), primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    normdocid = Column(GUID)
     docname = Column(String)
     docdate = Column(Date)
     docnum = Column(String(20))
@@ -61,13 +97,13 @@ class Normdoc(FiasRow, Base):
 
 class Addrobj(FiasRow, Base):
     __tablename__ = 'fias_addr_obj'
-    aoguid = Column(UUID(as_uuid=True))
+    aoguid = Column(GUID)
     id = Column(Integer, primary_key=True)
     parentid = Column(Integer, ForeignKey('fias_addr_obj.id'), index=True)
     parent = relationship("Addrobj", remote_side=[id], uselist=False)
-    aoid = deferred(Column(UUID(as_uuid=True)))
-    previd = deferred(Column(UUID(as_uuid=True)))
-    nextid = deferred(Column(UUID(as_uuid=True)))
+    aoid = deferred(Column(GUID))
+    previd = deferred(Column(GUID))
+    nextid = deferred(Column(GUID))
     startdate = deferred(Column(Date, default=date(1900, 1, 1)))
     enddate = deferred(Column(Date, default=date(2100, 1, 1)))
 
@@ -108,8 +144,8 @@ class Addrobj(FiasRow, Base):
 
 class House(FiasRow, Base):
     __tablename__ = 'fias_house'
-    houseguid = Column(UUID(as_uuid=True), primary_key=True)
-    houseid = Column(UUID(as_uuid=True))
+    houseguid = Column(GUID, primary_key=True)
+    houseid = Column(GUID)
     startdate = Column(Date)
     enddate = Column(Date)
 
@@ -170,7 +206,7 @@ class Versions(FiasRow, Base):
 class TableStatus(Base):
     __tablename__ = "fias_upd_stat"
     ver = Column(Integer)
-    tablename = Column(String, primary_key=True)
+    tablename = Column(String(50), primary_key=True)
 
     def __init__(self, name, ver):
         self.tablename = name
