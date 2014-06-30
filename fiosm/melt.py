@@ -27,7 +27,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import relationship, backref, joinedload
 from sqlalchemy import ForeignKey, Column, Integer, BigInteger, SmallInteger
-from fias_db import Base, Socrbase, House, Addrobj, UUID
+from fias_db import Base, Socrbase, House, Addrobj, GUID
 
 if use_osm:
     class Statistic(Base):
@@ -76,7 +76,7 @@ if use_osm:
 
     class BuildAssoc(Base):
         __tablename__ = prefix + bld_aso_tbl
-        h_guid = Column(UUID(as_uuid=True), ForeignKey("fias_house.houseguid"),
+        h_guid = Column(GUID, ForeignKey("fias_house.houseguid"),
                         primary_key=False, index=True)
         osm_build = Column(BigInteger, primary_key=True)
         point = Column(SmallInteger, primary_key=True)
