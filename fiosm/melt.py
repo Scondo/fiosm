@@ -283,10 +283,11 @@ class fias_AO(object):
                                     self.fullname, self.kind == 2)
             yield nice[0]
             was = set((nice[0]))
-            for name in self.names((nice[1])):
-                if name not in was:
-                    yield name
-                    was.add(name)
+            if len(nice) > 1:
+                for name in self.names((nice[1])):
+                    if name not in was:
+                        yield name
+                        was.add(name)
             if not(self.fias.formalname is None):
                 for name in self.names(self.formalname):
                     if name not in was:
