@@ -18,15 +18,20 @@ def details_view(request):
     return {"myself": myself, "statlink": statlink, "name": myself.name}
 
 
+@view_config(route_name='foundroot', renderer='templates/found.pt')
 @view_config(route_name='found', renderer='templates/found.pt')
+@view_config(route_name='foundbase_', renderer='templates/found.pt')
+@view_config(route_name='foundbase', renderer='templates/found.pt')
+@view_config(route_name='foundroot0', renderer='templates/found.pt')
+@view_config(route_name='found0', renderer='templates/found.pt')
 def found_view(request):
-    guid = request.matchdict["guid"]
-    typ = request.matchdict["typ"]
+    guid = request.matchdict.get("guid")
+    typ = request.matchdict.get("typ", "all")
     bld = typ.endswith('_b')
     if typ not in ('all', 'found', 'street', 'not found',
                    'all_b', 'found_b', 'not found_b'):
         raise HTTPBadRequest()
-    if not guid:
+    if not guid or guid == 'None':
         #root is ok
         guid = None
     else:
@@ -48,9 +53,8 @@ def found_view(request):
     else:
         alist = myself.subO(typ)
         alist.sort(key=lambda el: el.offname)
-
-    if request.matchdict["offset"] or len(alist) > (off_border * 1.5):
-        offset = int(request.matchdict['offset'])
+    offset = int(request.matchdict.get("offset", 0))
+    if offset or len(alist) > (off_border * 1.5):
         myself.offlinks = True
         alist = alist[offset:offset + off_border]
     else:
@@ -78,37 +82,6 @@ def found_view(request):
 
     return {"list": alist, "myself": myself, "links": links,
             'bld': bld, 'fullstat': fullstat}
-
-
-#Some defaults
-@view_config(route_name='foundbase', renderer='templates/found.pt')
-def foundbase_view(request):
-    request.matchdict["typ"] = "all"
-    return foundroot0_view(request)
-
-
-@view_config(route_name='foundbase_', renderer='templates/found.pt')
-def foundbase2_view(request):
-    return foundbase_view(request)
-
-
-@view_config(route_name='foundroot', renderer='templates/found.pt')
-def foundroot_view(request):
-    request.matchdict["guid"] = ""
-    return found_view(request)
-
-
-@view_config(route_name='foundroot0', renderer='templates/found.pt')
-def foundroot0_view(request):
-    request.matchdict["guid"] = ""
-    request.matchdict["offset"] = 0
-    return found_view(request)
-
-
-@view_config(route_name='found0', renderer='templates/found.pt')
-def found0_view(request):
-    request.matchdict["offset"] = 0
-    return found_view(request)
 
 
 @view_config(route_name='rest_buildings', renderer='templates/rest_buildings.pt')
