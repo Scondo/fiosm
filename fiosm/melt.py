@@ -561,13 +561,13 @@ class fias_AONode(fias_AO):
         if typ in ('not found', 'found', 'street'):
             q = self.session.query(Addrobj).filter_by(parentid=self.f_id,
                                                       livestatus=True)
-            if ao_stat:
+            if ao_stat and use_osm:
                 q = q.options(joinedload(Addrobj.stat))
-            if typ == 'found':
+            if typ == 'found' and use_osm:
                 q = q.join(PlaceAssoc)
-            elif typ == 'street':
+            elif typ == 'street' and use_osm:
                 q = q.join(StreetAssoc).distinct(Addrobj.id)
-            elif typ == 'not found':
+            elif typ == 'not found' and use_osm:
                 q = q.options(joinedload(Addrobj.street))
                 q = q.options(joinedload(Addrobj.place))
                 #q = q.filter(~Addrobj.street.any(), ~Addrobj.place.has())
@@ -580,7 +580,7 @@ class fias_AONode(fias_AO):
                              self.session)
                 el._fias = row
                 #    el._name = row['name']  # TODO :OSM name!
-                if typ == 'not found':
+                if typ == 'not found' and use_osm:
                     if row.place is not None:
                         self._subO['found'].append(el)
                     elif row.street:
