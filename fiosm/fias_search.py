@@ -65,9 +65,9 @@ def Subareas(elem):
     mem=mem[0]
     mem=zip(mem[1::2],mem[::2])#osm2pgsql use sequence to represent roles
     mem=[it[1] for it in mem if it[0]=='subarea' and (it[1][0]=='r' or it[1][0]=='w')]
-    #relation stored with negative osmid 
+    #relation stored with negative osmid
     mem=[int(it[1:])*(-1 if it[0]=='r' else 1) for it in mem]
-    
+
     res={}
     for id_a in mem:
         #using only valid polygons i.e. processed by osm2pgsql
@@ -86,8 +86,9 @@ def FindByName(pgeom, conn, name, tbl=prefix + ways_table, addcond=""):
     '''
     cur = conn.cursor()
     if pgeom == None:
-        cur.execute("SELECT DISTINCT osm_id FROM " + tbl + \
-                    " WHERE lower(name) = lower(%s)" + addcond, (name,))
+        cur.execute("SELECT DISTINCT osm.osm_id FROM "
+                    "(SELECT DISTINCT osm_id,  ST_Area(way) As area FROM " + tbl + \
+                    " WHERE lower(name) = lower(%s)" + addcond + " ORDER BY area DESC limit 1) as osm", (name,))
     else:
         cur.execute("SELECT DISTINCT osm_id FROM " + tbl + \
                     " WHERE lower(name) = lower(%s) AND ST_Within(way,%s)" + \

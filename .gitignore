@@ -171,3 +171,10 @@ pip-log.txt
 #streetmangler
 streetmangler.py
 data
+
+fiosm/_streetmangler.so
+fiosm/ru_RU.txt
+fiosm/ru
+.idea/
+*.pbf
+fiosm/local_config.py
