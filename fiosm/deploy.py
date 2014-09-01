@@ -4,15 +4,16 @@ Created on 01.04.2013
 @author: Scondo
 '''
 from config import *
-import psycopg2
-conn = psycopg2.connect(psy_dsn)
-conn.autocommit = True
-cur = conn.cursor()
+if use_osm:
+    import psycopg2
+    conn = psycopg2.connect(psy_dsn)
+    conn.autocommit = True
+    cur = conn.cursor()
 
-from sqlalchemy import create_engine
-from melt import Base, Statistic, BuildAssoc, StreetAssoc, PlaceAssoc
-engine = create_engine(al_dsn, echo=False)
-from argparse import ArgumentParser
+    from sqlalchemy import create_engine
+    from melt import Base, Statistic, BuildAssoc, StreetAssoc, PlaceAssoc
+    engine = create_engine(al_dsn, echo=False)
+    from argparse import ArgumentParser
 
 
 def AssocTriggersReCreate():
@@ -165,7 +166,7 @@ def CleanupTriggersReCreate():
     cur.execute("""CREATE TRIGGER tr_del_way
    BEFORE DELETE ON public.""" + prefix + ways_table + " FOR EACH ROW EXECUTE PROCEDURE on_del_way();")
 
-if __name__ == '__main__':
+if __name__ == '__main__' and use_osm:
     parser = ArgumentParser(description="Deploy FIOSM database part")
     parser.add_argument("--assocAO", action='store_true')
     parser.add_argument("--assocB", action='store_true')

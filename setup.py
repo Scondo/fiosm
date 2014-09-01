@@ -13,7 +13,7 @@ requires = [
     'waitress',
     'sqlalchemy',
     'rarfile',
-    'pysimplesoap'
+    'suds'
     ]
 
 setup(name='fiosm',

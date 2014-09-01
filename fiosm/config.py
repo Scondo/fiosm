@@ -1,4 +1,6 @@
-conn_par = {"db": "osm", "user": "osm", "host": "192.168.56.102", "pass": "osm"}
+use_osm = True
+
+conn_par = {"db": "fiosm", "user": "fiosm", "host": "192.168.56.101", "pass": "fiosm"}
 psy_dsn = "dbname={db} user={user} host={host} password={pass}".format(**conn_par)
 al_dsn = "postgresql://{user}:{pass}@{host}/{db}".format(**conn_par)
 
