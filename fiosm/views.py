@@ -6,6 +6,7 @@ import uuid
 off_border = 100
 import logging
 
+
 @view_config(route_name='details', renderer='templates/details.pt')
 def details_view(request):
     #Make check for malformed guid
@@ -24,6 +25,7 @@ def details_view(request):
 @view_config(route_name='foundbase', renderer='templates/found.pt')
 @view_config(route_name='foundroot0', renderer='templates/found.pt')
 @view_config(route_name='found0', renderer='templates/found.pt')
+@view_config(route_name='rest_found', renderer='templates/rest_substat.pt')
 def found_view(request):
     guid = request.matchdict.get("guid")
     typ = request.matchdict.get("typ", "all")
@@ -54,7 +56,7 @@ def found_view(request):
         alist = myself.subO(typ)
         alist.sort(key=lambda el: el.offname)
     offset = int(request.matchdict.get("offset", 0))
-    if offset or len(alist) > (off_border * 1.5):
+    if not bld and (offset or len(alist) > (off_border * 1.5)):
         myself.offlinks = True
         alist = alist[offset:offset + off_border]
     else:
@@ -79,7 +81,8 @@ def found_view(request):
             return request.route_url('found', guid=self.guid, typ=typ,
                                      offset=min(self.stat(typ) - 1,
                                                 offset + off_border))
-
+    if 'rest' in request.url:
+        request.response.content_type = 'text/xml'
     return {"list": alist, "myself": myself, "links": links,
             'bld': bld, 'fullstat': fullstat}
 

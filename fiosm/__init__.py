@@ -16,6 +16,7 @@ def main(global_config, **settings):
     config.add_route('details', 'details/{kind}/{guid}')
     # REST API
     config.add_route('rest_buildings', 'rest/buildings/{ao_guid}')
+    config.add_route('rest_found', 'rest/list/{guid}/{typ}')
     # XML-RPC API
     config.include('pyramid_rpc.xmlrpc')
     config.add_xmlrpc_endpoint('xmlrpc', '/xmlrpc')

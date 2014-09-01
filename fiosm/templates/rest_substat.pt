@@ -1,0 +1,7 @@
+<?xml version="1.0"?><subs xmlns:tal="http://xml.zope.org/namespaces/tal">
+<sub tal:repeat="row list"><guid tal:condition="bld">${row.houseguid}</guid><guid tal:condition="not bld">${row.guid}</guid>
+<name>${row.name}</name>
+<aolevel tal:condition="not bld">${row.aolevel}</aolevel>
+</sub>
+<too_much tal:condition="myself.offlinks">1</too_much>
+<too_much tal:condition="not myself.offlinks">0</too_much></subs>
