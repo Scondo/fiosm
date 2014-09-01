@@ -80,15 +80,16 @@ def GetAreas(request, filter_by={}, name_like=None):
     if filter_by is None:
         filter_by = {'parentid': None}
     cols = set(fias_db.Addrobj({'id': -1}).collist())
-    for key in filter_by:
+    for key in list(filter_by):
         if key not in cols:
             del filter_by[key]
-        if filter_by[key] == '':
+        elif filter_by[key] == '':
             filter_by[key] = 0
     filter_by['livestatus'] = True
     q = session.query(fias_db.Addrobj).filter_by(**filter_by)
     if name_like:
-        q = q.filter(fias_db.Addrobj.formalname.like(name_like))
+        # TODO: check MSSQL
+        q = q.filter(fias_db.Addrobj.formalname.ilike(name_like))
     if q.count() > return_limit:
         return "Too big list"
     else:
