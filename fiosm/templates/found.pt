@@ -31,7 +31,7 @@
 			<td><a href="${links(myself,'details')}">Информация ФИАС</a></td>
 		</tr>
 		<tr>
-			<td width=50%>
+			<td width="50%">
 				<table class="mystat" cellspacing="1" border="1">
 					<tr>
 						<th colspan="2">Статистика:</th>
@@ -81,7 +81,7 @@
 	<tr><td><a href="${links(myself,'prev')}">Предыдущие</a></td><td><a href="${links(myself,'next')}">Следующие</a></td></tr>
 	</table>
 	<p></p>
-	<table class="childstat" border=1 cellspacing=0>
+	<table class="childstat" border="1" cellspacing="0">
 		<thead>
 			<tr>
 				<th>Название</th>
