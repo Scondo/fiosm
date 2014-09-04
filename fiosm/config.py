@@ -16,3 +16,6 @@ slim_rel_tbl='rels'
 pl_aso_tbl='fias_place'
 way_aso_tbl='fias_street'
 bld_aso_tbl='fias_build'
+
+use_osm = True
+
