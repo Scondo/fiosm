@@ -156,7 +156,7 @@ class House(FiasRow, Base):
     ifnsul = deferred(Column(SmallInteger))
     terrifnsul = deferred(Column(SmallInteger))
     okato = deferred(Column(BigInteger))
-    oktmo = deferred(Column(Integer))
+    oktmo = deferred(Column(String(11)))
     updatedate = deferred(Column(Date))
     housenum = Column(String(20))
     eststatus = Column(SmallInteger)
