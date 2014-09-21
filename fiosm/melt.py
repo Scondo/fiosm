@@ -532,8 +532,12 @@ class fias_AO(object):
         if hasattr(self,'_geom'):
             return self._geom
         cur_ = self.conn.cursor()
-        if self.kind==2 and self.osmid<>None:
-            cur_.execute("SELECT way FROM "+prefix+poly_table+" WHERE osm_id=%s",(self.osmid,))
+        if (self.kind == 2) and (self.osmid is not None):
+            #cur_.execute("SELECT way FROM "+prefix+poly_table+" WHERE osm_id=%s",(self.osmid,))
+            # TODO: add to config if import allow multi-polygon (-G)
+            cur_.execute("SELECT ST_Union(way) as way FROM " +\
+                         prefix + poly_table + " WHERE osm_id=%s",
+                         (self.osmid,))
             self._geom=cur_.fetchone()[0]
         elif self.kind==1:
             cur_.execute("SELECT St_Buffer(ST_Union(w.way),2000) FROM " + prefix + ways_table + " w, " + prefix + way_aso_tbl + " s WHERE s.osm_way=w.osm_id AND s.ao_id=%s", (self.f_id,))
