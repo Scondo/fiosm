@@ -15,6 +15,19 @@ point_r = None
 poly_r = None
 way_r = None
 
+multichkcache = None
+
+
+def MultiChk(conn):
+    global multichkcache
+    if multichkcache is None:
+        multichkcache = set()
+        cur = conn.cursor()
+        cur.execute('SELECT column_name FROM information_schema.columns '
+                    'WHERE table_name = %s', (prefix + poly_table, ))
+        multichkcache = set([it[0] for it in cur.fetchall()])
+    return multichkcache
+
 
 def InitPointR(conn):
     """Init point restriction with already used buildings
@@ -118,6 +131,27 @@ def FindAssocPlace(elem, pgeom):
     for name in elem.names():
         checked = FindByName(pgeom, elem.conn, name, prefix + poly_table,
                              " AND building ISNULL")
+        if len(checked) > 1 and 'place' in MultiChk(elem.conn):
+            checked0 = FindByName(pgeom, elem.conn, name, prefix + poly_table,
+                             " AND building ISNULL AND "
+                             "place IN ('city', 'town', 'village', 'hamlet', "
+                             "'suburb', 'quarter', 'neighbourhood')")
+            if len(checked0) != 0:
+                checked = checked0
+
+        if len(checked) > 1 and 'admin_level' in MultiChk(elem.conn):
+            checked0 = FindByName(pgeom, elem.conn, name, prefix + poly_table,
+                             " AND building ISNULL AND admin_level NOTNULL")
+            if len(checked0) != 0:
+                checked = checked0
+
+        if len(checked) > 1 and 'boundary' in MultiChk(elem.conn):
+            checked0 = FindByName(pgeom, elem.conn, name, prefix + poly_table,
+                             " AND building ISNULL AND "
+                             "boundary='administrative'")
+            if len(checked0) != 0:
+                checked = checked0
+
         for osmid in checked:
             if check_adm(osmid[0]):
                 elem.name = name
