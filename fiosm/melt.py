@@ -279,15 +279,12 @@ class fias_AO(object):
 
     def names(self, formal=None):
         if formal is None:
-            nice = nice_street.nice(self.formalname, self.fias.shortname,
-                                    self.fullname, self.kind == 2)
-            yield nice[0]
-            was = set((nice[0]))
-            if len(nice) > 1:
-                for name in self.names((nice[1])):
-                    if name not in was:
-                        yield name
-                        was.add(name)
+            was = set()
+            for name in nice_street.nice(self.formalname, self.fias.shortname,
+                                    self.fullname, self.kind == 2):
+                if name not in was:
+                    yield name
+                    was.add(name)
             if not(self.fias.formalname is None):
                 for name in self.names(self.formalname):
                     if name not in was:
@@ -299,6 +296,11 @@ class fias_AO(object):
                         yield name
                         was.add(name)
         else:
+            uns = nice_street.unslash(formal)
+            if uns != formal:
+                yield self.fullname + " " + uns
+                yield uns + " " + self.fullname
+                yield uns
             yield self.fullname + " " + formal
             yield formal + " " + self.fullname
             yield formal
