@@ -131,11 +131,11 @@ def FindAssocPlace(elem, pgeom):
     for name in elem.names():
         checked = FindByName(pgeom, elem.conn, name, prefix + poly_table,
                              " AND building ISNULL")
-        if len(checked) > 1 and 'place' in MultiChk(elem.conn):
+
+        if len(checked) > 1 and 'boundary' in MultiChk(elem.conn):
             checked0 = FindByName(pgeom, elem.conn, name, prefix + poly_table,
                              " AND building ISNULL AND "
-                             "place IN ('city', 'town', 'village', 'hamlet', "
-                             "'suburb', 'quarter', 'neighbourhood')")
+                             "boundary='administrative'")
             if len(checked0) != 0:
                 checked = checked0
 
@@ -145,10 +145,11 @@ def FindAssocPlace(elem, pgeom):
             if len(checked0) != 0:
                 checked = checked0
 
-        if len(checked) > 1 and 'boundary' in MultiChk(elem.conn):
+        if len(checked) > 1 and 'place' in MultiChk(elem.conn):
             checked0 = FindByName(pgeom, elem.conn, name, prefix + poly_table,
                              " AND building ISNULL AND "
-                             "boundary='administrative'")
+                             "place IN ('city', 'town', 'village', 'hamlet', "
+                             "'suburb', 'quarter', 'neighbourhood')")
             if len(checked0) != 0:
                 checked = checked0
 
