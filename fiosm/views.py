@@ -46,17 +46,24 @@ def found_view(request):
     myself = melt.fias_AONode(guid)
     if guid and not myself.isok:
         raise HTTPNotFound()
-    fullstat = guid is not None and myself.stat_db_full
-    fullstat = fullstat or all([it.stat_db_full for it in myself.subO('all')])
 
     if bld:
         alist = myself.subB(typ)
         alist.sort(key=lambda el: el.onestr)
     else:
-        alist = myself.subO(typ)
+        alist = myself.subO(typ, not('rest' in request.url))
         alist.sort(key=lambda el: el.offname)
+
+    fullstat = guid is not None and myself.stat_db_full
+    fullstat = fullstat or all([it.stat_db_full for it in myself.subO('all')])
+
     offset = int(request.matchdict.get("offset", 0))
-    if not bld and (offset or len(alist) > (off_border * 1.5)):
+    myself.need_more = (len(alist) > (off_border * 1.5)
+                        and len(alist) > off_border + offset)
+    if 'rest' in request.url:
+        request.response.content_type = 'text/xml'
+        myself.need_more = False
+    if (offset or myself.need_more):
         myself.offlinks = True
         alist = alist[offset:offset + off_border]
     else:
@@ -81,8 +88,6 @@ def found_view(request):
             return request.route_url('found', guid=self.guid, typ=typ,
                                      offset=min(self.stat(typ) - 1,
                                                 offset + off_border))
-    if 'rest' in request.url:
-        request.response.content_type = 'text/xml'
     return {"list": alist, "myself": myself, "links": links,
             'bld': bld, 'fullstat': fullstat}
 

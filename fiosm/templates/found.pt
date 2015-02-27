@@ -78,7 +78,8 @@
 		</tr>
 	</table>
 	<table tal:condition="myself.offlinks">
-	<tr><td><a href="${links(myself,'prev')}">Предыдущие</a></td><td><a href="${links(myself,'next')}">Следующие</a></td></tr>
+	<tr><td><a href="${links(myself,'prev')}">Предыдущие</a></td>
+		<td tal:condition="myself.need_more"><a href="${links(myself,'next')}">Следующие</a></td></tr>
 	</table>
 	<p></p>
 	<table class="childstat" border="1" cellspacing="0">
