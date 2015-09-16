@@ -3,31 +3,48 @@
 from __future__ import division
 import xml.parsers.expat
 import datetime
-
-
-def strpdate(string, fmt):
-    return datetime.datetime.strptime(string, fmt).date()
-
-
 from datetime import date
-today = date.today()
 import logging
 from urllib import urlretrieve, urlcleanup
 from urllib2 import URLError
 from os.path import exists
 import rarfile
-updating = ("normdoc", "addrobj", "socrbase", "house")
 import fias_db
-from fias_db import House, Addrobj
+from fias_db import House, Addrobj, Normdoc
 from uuid import UUID
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+
+def strpdate(string, fmt):
+    return datetime.datetime.strptime(string, fmt).date()
+
+today = date.today()
+
+updating = ("normdoc", "addrobj", "socrbase", "house")
 Session = sessionmaker()
 session = Session()
 upd = False
 now_row = 0
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 
+# Very dirty hack
+def do_executemany_patched(self, cursor, statement, parameters, context=None):
+    ins = False
+    if statement[:6].lower() == 'insert':
+        p = statement.find('VALUES')
+        if p == -1:
+            p = statement.find('values')
+        if p != -1:
+            records_list_template = ','.join(['%s' for t in parameters])
+            statement_ = statement[:p + 7] + records_list_template
+            cursor.execute(statement_, parameters)
+            ins = True
+    if not ins:
+        cursor.executemany(statement, parameters)
+
+from sqlalchemy.engine.default import DefaultDialect
+DefaultDialect.do_executemany = do_executemany_patched
 
 class FiasFiles(object):
     def __new__(cls):
@@ -115,6 +132,7 @@ class FiasFiles(object):
 class GuidId(object):
     def __init__(self, guidn, record):
         self.cache = {}
+        self.objcache = {}
         self.guidn = guidn
         if guidn in record.__table__.primary_key:
             self.fast = 1
@@ -133,6 +151,8 @@ class GuidId(object):
             self.local = False
 
     def getrec(self, guid):
+        if guid in self.objcache:
+            return self.objcache[guid]
         if self.fast == 1:
             return session.query(self.record).get(guid)
         elif self.fast == 2 and guid in self.cache:
@@ -168,7 +188,7 @@ class GuidId(object):
 
     def pushrec(self, dic, comp=None):
         guid = dic[self.guidn]
-        if self.local and guid not in self.cache:
+        if self.local and (guid not in self.cache):
             self.max += 1
             dic["id"] = self.max
             idO = None
@@ -185,11 +205,11 @@ class GuidId(object):
                 #In non-local DB we must commit to get id
                 session.commit()
         else:
-            if comp is None or comp(dic, idO):
+            if (comp is None) or comp(dic, idO):
                 del dic[self.guidn]
                 idO.fromdic(dic)
         self.cache[guid] = idO.id
-        #return idO.id
+        self.objcache[guid] = idO
 
 
 NormdocGuidId = GuidId('normdocid', fias_db.Normdoc)
@@ -208,7 +228,7 @@ def addr_cmp(dic, rec):
         logging.warn(dic)
     if dic['STARTDATE'] > rec.startdate:
         return True
-    if dic['STARTDATE'] == rec.startdate and dic['ENDDATE'] > rec.enddate:
+    if (dic['STARTDATE'] == rec.startdate) and (dic['ENDDATE'] > rec.enddate):
         logging.warn("Same start")
         #When start from same date better is one who finish last
         return True
@@ -219,8 +239,9 @@ def normdoc_row(name, attrib):
     global now_row
     if name == "NormativeDocument":
         now_row += 1
-        if now_row % 50000 == 0:
+        if now_row % 100000 == 0:
             logging.info(now_row)
+            NormdocGuidId.objcache = {}
             session.commit()
         attrib['normdocid'] = UUID(attrib.pop('NORMDOCID'))
         NormdocGuidId.pushrec(attrib)
@@ -255,28 +276,39 @@ def addr_obj_row(name, attrib):
         AoGuidId.pushrec(attrib, comp=addr_cmp)
 
         now_row += 1
-        if now_row % 20000 == 0:
+        if now_row % 50000 == 0:
             logging.info(now_row)
+            AoGuidId.objcache = {}
             session.commit()
 
-#Predefined some crazy records
-pushed_hous = {UUID('312f2f09-df65-46e3-ae25-383358b1ea3e'): date(100, 1, 1),
-               UUID('4c10b3d9-5d49-4d45-a0d9-e068f7029c90'): date(100, 1, 1),
-               UUID('32aabe5d-e1e2-44e9-979c-00d729573e5b'): date(100, 1, 1)
-               }
-#Keys are guids, values are startdates
+
+# Keys are guids, values are records
+pushed_hous = {}
 
 
+def prefetch_hous(guid):
+    pushed_hous[guid] = session.query(House).get(guid)
+    if pushed_hous[guid] is None:
+        pushed_hous[guid] = fias_db.House({'houseguid': guid,
+                                           'startdate': date(100, 1, 1)})
+
+
+h_cache = {}
 def house_row(name, attrib):
-    global upd, now_row
+    global upd, now_row, h_cache
+
     if name == 'House':
         now_row += 1
-        if now_row % 100000 == 0:
+        if now_row % 500000 == 0:
             logging.info(now_row)
+            h_cache = {}
             session.commit()
-        rec = None
         if upd:
             session.query(House).filter_by(houseid=attrib['HOUSEID']).delete()
+
+        del attrib['COUNTER']
+        normdoc = attrib.pop('NORMDOC', None)
+        aoguid = attrib.pop('AOGUID')
 
         ed = attrib.pop('ENDDATE').split('-')
         enddate = date(int(ed[0]), int(ed[1]), int(ed[2]))
@@ -284,22 +316,26 @@ def house_row(name, attrib):
         startdate = date(int(sd[0]), int(sd[1]), int(sd[2]))
 
         strange = startdate >= enddate
-        if not strange and enddate < today:
+        if (not strange) and (enddate < today):
             return
         guid = UUID(attrib.pop("HOUSEGUID"))
         if guid in pushed_hous:
-            if pushed_hous[guid] > startdate:
-                return
+            rec = pushed_hous[guid]
+            topush = True
+        else:
+            rec = None
+            topush = False
+
+        if (strange or (startdate >= today)) and (rec is None):
+            topush = True
+            # If house is 'future' check if that already in DB
+            # Other houses should not be in DB:
+            # 'past' houses are skipped and current is only one
+            if guid in h_cache:
+                rec = h_cache[guid]
             else:
                 rec = session.query(House).get(guid)
 
-        del attrib['COUNTER']
-        normdoc = attrib.pop('NORMDOC', None)
-        aoguid = attrib.pop('AOGUID')
-
-        if strange or startdate >= today:
-            pushed_hous[guid] = startdate
-            rec = session.query(House).get(guid)
         if rec is None:
             rec = fias_db.House(attrib)
             rec.houseguid = guid
@@ -315,6 +351,10 @@ def house_row(name, attrib):
         if not (normdoc is None):
             rec.normdoc = NormdocGuidId.getid(UUID(normdoc))
 
+        if topush:
+            pushed_hous[guid] = rec
+        else:
+            h_cache[guid] = rec
 
 def UpdateTable(table, fil, engine=None):
     global upd, pushed_rows, now_row
@@ -332,15 +372,24 @@ def UpdateTable(table, fil, engine=None):
         session.query(fias_db.Socrbase).delete()
         p.StartElementHandler = socr_obj_row
     elif table == 'normdoc':
+        if not upd:
+            Normdoc.__table__.drop(engine)
+            Normdoc.__table__.create(engine)
         p.StartElementHandler = normdoc_row
     elif table == 'house':
         if not upd:
             House.__table__.drop(engine)
             House.__table__.create(engine)
+        # Predefine some crazy houses
+        prefetch_hous(UUID('312f2f09-df65-46e3-ae25-383358b1ea3e'))
+        prefetch_hous(UUID('4c10b3d9-5d49-4d45-a0d9-e068f7029c90'))
+        prefetch_hous(UUID('32aabe5d-e1e2-44e9-979c-00d729573e5b'))
         p.StartElementHandler = house_row
     p.ParseFile(fil)
+    NormdocGuidId.objcache = {}
+    AoGuidId.objcache = {}
     session.commit()
-    if not upd and engine.name == 'postgresql':
+    if (not upd) and (engine.name == 'postgresql'):
         logging.info("Index and cluster")
         if table == 'house':
             engine.execute("CREATE INDEX parent ON fias_house "
@@ -357,12 +406,22 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(\
                             description="Reader of FIAS into database")
     parser.add_argument("--fullfile")
+    parser.add_argument("--forcenew", action='store_true')
     parser.add_argument("--fullver", type=int)
     args = parser.parse_args()
     from config import al_dsn
-    engine = create_engine(al_dsn, echo=False, implicit_returning=False)
+    engine = create_engine(al_dsn,
+                           echo=False,
+                           paramstyle='format',
+                           implicit_returning=False,
+                           #execution_options={'stream_results': True}
+                           #isolation_level='AUTOCOMMIT',
+                           #poolclass=NullPool,
+                           )
     Session.configure(bind=engine)
     session = Session()
+    if args.forcenew:
+        fias_db.TableStatus.__table__.drop(engine)
     fias_db.Base.metadata.create_all(engine)
     fias = FiasFiles()
     fias.full_file = args.fullfile
