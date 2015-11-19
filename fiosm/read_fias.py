@@ -130,9 +130,13 @@ class FiasFiles(object):
 
 
 class GuidId(object):
-    def __init__(self, guidn, record):
+    def __init__(self, guidn, record, use_objcache=False):
         self.cache = {}
-        self.objcache = {}
+        if use_objcache:
+            self.objcache = {}
+            self.objcache_ = {}
+        else:
+            self.objcache = None
         self.guidn = guidn
         if guidn in record.__table__.primary_key:
             self.fast = 1
@@ -143,6 +147,10 @@ class GuidId(object):
         self.record = record
         self.local = None
 
+    def flush_cache(self):
+        self.objcache_ = self.objcache
+        self.objcache = {}
+
     def chklocal(self):
         if session.query(self.record).count() == 0:
             self.local = True
@@ -151,8 +159,11 @@ class GuidId(object):
             self.local = False
 
     def getrec(self, guid):
-        if guid in self.objcache:
-            return self.objcache[guid]
+        if not (self.objcache is None):
+            if guid in self.objcache:
+                return self.objcache[guid]
+            if guid in self.objcache_:
+                return self.objcache_[guid]
         if self.fast == 1:
             return session.query(self.record).get(guid)
         elif self.fast == 2 and guid in self.cache:
@@ -209,17 +220,22 @@ class GuidId(object):
                 del dic[self.guidn]
                 idO.fromdic(dic)
         self.cache[guid] = idO.id
-        self.objcache[guid] = idO
+        if not (self.objcache is None):
+            self.objcache[guid] = idO
 
 
 NormdocGuidId = GuidId('normdocid', fias_db.Normdoc)
-AoGuidId = GuidId('aoguid', fias_db.Addrobj)
+AoGuidId = GuidId('aoguid', fias_db.Addrobj, True)
 
 
 def addr_cmp(dic, rec):
     if rec.aoid is None:
         #Dummy always should be replaced
         return True
+    if dic['parentid'] != rec.parentid:
+        # force save new records
+        # if it could be referenced
+        session.commit()
     if dic['AOID'] == rec.aoid:
         #New rec is always better
         return True
@@ -241,8 +257,7 @@ def normdoc_row(name, attrib):
         now_row += 1
         if now_row % 100000 == 0:
             logging.info(now_row)
-            NormdocGuidId.objcache = {}
-            session.commit()
+            session.flush()
         attrib['normdocid'] = UUID(attrib.pop('NORMDOCID'))
         NormdocGuidId.pushrec(attrib)
 
@@ -273,13 +288,14 @@ def addr_obj_row(name, attrib):
         attrib['aoguid'] = UUID(attrib.pop('AOGUID'))
         if 'PARENTGUID' in attrib:
             attrib['parentid'] = AoGuidId.getid(UUID(attrib.pop('PARENTGUID')))
+
         AoGuidId.pushrec(attrib, comp=addr_cmp)
 
         now_row += 1
-        if now_row % 50000 == 0:
+        if now_row % 100000 == 0:
             logging.info(now_row)
-            AoGuidId.objcache = {}
-            session.commit()
+            AoGuidId.flush_cache()
+            session.flush()
 
 
 # Keys are guids, values are records
@@ -294,13 +310,18 @@ def prefetch_hous(guid):
 
 
 h_cache = {}
+now_row_ = 0
 def house_row(name, attrib):
-    global upd, now_row, h_cache
+    global upd, now_row, h_cache, now_row_
 
     if name == 'House':
-        now_row += 1
-        if now_row % 500000 == 0:
-            logging.info(now_row)
+        #now_row += 1
+        now_row_ += 1
+        #if now_row % 500000 == 0:
+        if now_row_ == 250000:
+            now_row = now_row + now_row_
+            now_row_ = 0
+            logging.info((now_row, len(h_cache), len(pushed_hous), ))
             h_cache = {}
             session.commit()
         if upd:
@@ -308,26 +329,27 @@ def house_row(name, attrib):
 
         del attrib['COUNTER']
         normdoc = attrib.pop('NORMDOC', None)
-        aoguid = attrib.pop('AOGUID')
-
+        aoguid = UUID(attrib.pop('AOGUID'))
+        if AoGuidId.local:
+            if not (aoguid in AoGuidId.cache):
+                return
         ed = attrib.pop('ENDDATE').split('-')
         enddate = date(int(ed[0]), int(ed[1]), int(ed[2]))
         sd = attrib.pop('STARTDATE').split('-')
         startdate = date(int(sd[0]), int(sd[1]), int(sd[2]))
-
+        ud = attrib.pop('UPDATEDATE').split('-')
+        updatedate = date(int(ud[0]), int(ud[1]), int(ud[2]))
+        guid = UUID(attrib.pop("HOUSEGUID"))
         strange = startdate >= enddate
         if (not strange) and (enddate < today):
             return
-        guid = UUID(attrib.pop("HOUSEGUID"))
+
         if guid in pushed_hous:
             rec = pushed_hous[guid]
-            topush = True
         else:
             rec = None
-            topush = False
 
         if (strange or (startdate >= today)) and (rec is None):
-            topush = True
             # If house is 'future' check if that already in DB
             # Other houses should not be in DB:
             # 'past' houses are skipped and current is only one
@@ -341,19 +363,33 @@ def house_row(name, attrib):
             rec.houseguid = guid
             session.add(rec)
         else:
-            if startdate > rec.startdate:
+            if startdate >= rec.startdate:
+                attrib.setdefault('IFNSFL', None)
+                attrib.setdefault('TERRIFNSFL', None)
+                attrib.setdefault('IFNSUL', None)
+                attrib.setdefault('TERRIFNSUL', None)
+
+                attrib.setdefault('POSTALCODE', None)
+                attrib.setdefault('OKTMO', None)
+                attrib.setdefault('OKATO', None)
+
+                attrib.setdefault('HOUSENUM', None)
+                attrib.setdefault('BUILDNUM', None)
+                attrib.setdefault('STRUCNUM', None)
                 rec.fromdic(attrib)
             else:
                 return
         rec.enddate = enddate
         rec.startdate = startdate
-        rec.ao_id = AoGuidId.getid(UUID(aoguid))
+        rec.updatedate = updatedate
+        rec.ao_id = AoGuidId.getid(aoguid)
         if not (normdoc is None):
             rec.normdoc = NormdocGuidId.getid(UUID(normdoc))
 
-        if topush:
+        if (startdate >= today) or strange:
             pushed_hous[guid] = rec
         else:
+            pushed_hous.pop(guid, None)
             h_cache[guid] = rec
 
 def UpdateTable(table, fil, engine=None):
@@ -384,11 +420,13 @@ def UpdateTable(table, fil, engine=None):
         prefetch_hous(UUID('312f2f09-df65-46e3-ae25-383358b1ea3e'))
         prefetch_hous(UUID('4c10b3d9-5d49-4d45-a0d9-e068f7029c90'))
         prefetch_hous(UUID('32aabe5d-e1e2-44e9-979c-00d729573e5b'))
+        prefetch_hous(UUID('d7596c73-e3f8-48a1-8fa6-b71a17f628a3'))
         p.StartElementHandler = house_row
     p.ParseFile(fil)
-    NormdocGuidId.objcache = {}
     AoGuidId.objcache = {}
+    AoGuidId.objcache_ = {}
     session.commit()
+    session.expunge_all()
     if (not upd) and (engine.name == 'postgresql'):
         logging.info("Index and cluster")
         if table == 'house':
@@ -421,7 +459,10 @@ if __name__ == "__main__":
     Session.configure(bind=engine)
     session = Session()
     if args.forcenew:
-        fias_db.TableStatus.__table__.drop(engine)
+        try:
+            fias_db.TableStatus.__table__.drop(engine)
+        except:
+            pass
     fias_db.Base.metadata.create_all(engine)
     fias = FiasFiles()
     fias.full_file = args.fullfile
