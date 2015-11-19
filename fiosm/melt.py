@@ -295,6 +295,8 @@ class fias_AO(object):
                     if name not in was:
                         yield name
                         was.add(name)
+            if not was:
+                yield ''
         else:
             uns = nice_street.unslash(formal)
             if uns != formal:
@@ -457,7 +459,10 @@ class fias_AO(object):
         br = ('all_b_r' in stat) and ('found_b_r' in stat)
         f = mode == 2 and a and b and ar and br
         statR = self.fias.stat
-        if self.fias.stat is None:
+        if statR is None:
+            # multithread backup
+            self.session.query(Statistic).get(self.f_id)
+        if statR is None:
             if a or b or ar or br:
                 statR = Statistic({"ao_id": self.f_id})
                 self.session.add(statR)
@@ -537,12 +542,15 @@ class fias_AO(object):
         if (self.kind == 2) and (self.osmid is not None):
             #cur_.execute("SELECT way FROM "+prefix+poly_table+" WHERE osm_id=%s",(self.osmid,))
             # TODO: add to config if import allow multi-polygon (-G)
-            cur_.execute("SELECT ST_Union(way) as way FROM " +\
+            cur_.execute("SELECT ST_Union(way) as way FROM " +
                          prefix + poly_table + " WHERE osm_id=%s",
                          (self.osmid,))
             self._geom=cur_.fetchone()[0]
-        elif self.kind==1:
-            cur_.execute("SELECT St_Buffer(ST_Union(w.way),2000) FROM " + prefix + ways_table + " w, " + prefix + way_aso_tbl + " s WHERE s.osm_way=w.osm_id AND s.ao_id=%s", (self.f_id,))
+        elif self.kind == 1:
+            cur_.execute("SELECT St_Buffer(ST_Union(w.way),2000) FROM " +
+                         prefix + ways_table + " w, " + prefix + way_aso_tbl +
+                         " s WHERE s.osm_way=w.osm_id AND s.ao_id=%s",
+                         (self.f_id,))
             self._geom=cur_.fetchone()[0]
         else:
             return None

@@ -249,7 +249,7 @@ def AssociateO(elem):
                     assoc = melt.StreetAssoc(sub.f_id, street)
                     elem.session.add(assoc)
             elem.session.commit()
-            AssociateO(sub_)
+        AssociateO(sub_)
     #search for new areas
     subareas = Subareas(elem)
     for sub in tuple(elem.subO('not found', True)):
