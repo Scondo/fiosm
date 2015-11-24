@@ -5,6 +5,9 @@ Created on 11 нояб. 2013 г.
 @author: Scondo
 '''
 import logging
+import pymorphy2
+import numerals
+
 from itertools import chain
 try:
     import streetmangler
@@ -26,10 +29,9 @@ synonyms = ((u'Первой Маёвки', u'Первой Маевки', u'1 М�
             (u'Старый Толмачёвский', u'Толмачевский Ст.', u'Ст. Толмачевский'),
             (u'Пруд-Ключики', u'Пруд Ключики'),)
 all_synonyms = set(chain(*synonyms))
-#from fiosm 
-import numerals
+# prepare
 numerals.generate_adj()
-
+morph = pymorphy2.MorphAnalyzer()
 
 def check_synonym(name):
     if name in all_synonyms:
@@ -74,8 +76,15 @@ def nice(basename, shortname, fullname, place=False):
         else:
             words = name.split(u' ')
             if words[-1] in numerals.adj:
-                yield u' '.join([words[-1],] + [fullname,] + words[:-1])
-                yield u' '.join([numerals.adj[words[-1]],] + [fullname,] + words[:-1])
+                logging.info(morph.parse(words[0]))
+                logging.info('ADJF' in morph.parse(words[0])[0].tag)
+                if 'ADJF' in morph.parse(words[0])[0].tag:
+                    yield u' '.join([words[-1], ] + words[:-1] + [fullname, ])
+                    yield u' '.join([numerals.adj[words[-1]], ] + words[:-1] +
+                                    [fullname, ])
+                yield u' '.join([words[-1], ] + [fullname, ] + words[:-1])
+                yield u' '.join([numerals.adj[words[-1]], ] + [fullname, ] +
+                                words[:-1])
             basename_ = u" ".join((fullname, name))
 
         if db is not None and not place:
