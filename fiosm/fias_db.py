@@ -175,7 +175,7 @@ class House(FiasRow, Base):
             _str = _str + u'к' + self.buildnum + space
         if self.strucnum:
             _str = _str + u'с' + self.strucnum + space
-        return _str[:-1]
+        return _str[:(-1 * len(space))]
 
     @property
     def onestr(self):
