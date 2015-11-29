@@ -13,6 +13,7 @@ import fias_db
 from fias_db import House, Addrobj, Normdoc
 from uuid import UUID
 from sqlalchemy import create_engine
+from sqlalchemy import inspect
 from sqlalchemy.orm import sessionmaker
 
 
@@ -297,7 +298,8 @@ def addr_obj_row(name, attrib):
             AoGuidId.flush_cache()
             session.flush()
 
-
+# Keys are guids, values are update dates
+removed_hous = {}
 # Keys are guids, values are records
 pushed_hous = {}
 
@@ -306,7 +308,8 @@ def prefetch_hous(guid):
     pushed_hous[guid] = session.query(House).get(guid)
     if pushed_hous[guid] is None:
         pushed_hous[guid] = fias_db.House({'houseguid': guid,
-                                           'startdate': date(100, 1, 1)})
+                                           'startdate': date(100, 1, 1),
+                                           'updatedate': date(100, 1, 1)})
 
 
 h_cache = {}
@@ -315,13 +318,12 @@ def house_row(name, attrib):
     global upd, now_row, h_cache, now_row_
 
     if name == 'House':
-        #now_row += 1
         now_row_ += 1
-        #if now_row % 500000 == 0:
         if now_row_ == 250000:
             now_row = now_row + now_row_
             now_row_ = 0
-            logging.info((now_row, len(h_cache), len(pushed_hous), ))
+            logging.info((now_row, len(h_cache),
+                          len(pushed_hous), len(removed_hous)))
             h_cache = {}
             session.commit()
         if upd:
@@ -340,14 +342,23 @@ def house_row(name, attrib):
         ud = attrib.pop('UPDATEDATE').split('-')
         updatedate = date(int(ud[0]), int(ud[1]), int(ud[2]))
         guid = UUID(attrib.pop("HOUSEGUID"))
+        if guid in removed_hous:
+            if updatedate < removed_hous[guid]:
+                return
+            else:
+                removed_hous.pop(guid)
+        rec = pushed_hous.get(guid, None)
         strange = startdate >= enddate
-        if (not strange) and (enddate < today):
+        if (not strange) and (enddate < today) and\
+                (rec is None or rec.updatedate <= updatedate):
+            removed_hous[guid] = updatedate
+            if rec is not None:
+                if inspect(rec).transient:
+                    del rec
+                else:
+                    session.commit()
+                    session.delete(rec)
             return
-
-        if guid in pushed_hous:
-            rec = pushed_hous[guid]
-        else:
-            rec = None
 
         if (strange or (startdate >= today)) and (rec is None):
             # If house is 'future' check if that already in DB
@@ -363,7 +374,7 @@ def house_row(name, attrib):
             rec.houseguid = guid
             session.add(rec)
         else:
-            if startdate >= rec.startdate:
+            if updatedate >= rec.updatedate:
                 attrib.setdefault('IFNSFL', None)
                 attrib.setdefault('TERRIFNSFL', None)
                 attrib.setdefault('IFNSUL', None)

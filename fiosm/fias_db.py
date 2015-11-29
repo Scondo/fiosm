@@ -146,8 +146,8 @@ class House(FiasRow, Base):
     __tablename__ = 'fias_house'
     houseguid = Column(GUID, primary_key=True)
     houseid = Column(GUID)
-    startdate = Column(Date)
-    enddate = Column(Date)
+    startdate = Column(Date, default=date(1900, 1, 1))
+    enddate = Column(Date, default=date(2100, 1, 1))
 
     #f_id = Column(Integer, primary_key=True)
     postalcode = deferred(Column(Integer))
@@ -157,7 +157,8 @@ class House(FiasRow, Base):
     terrifnsul = deferred(Column(SmallInteger))
     okato = deferred(Column(BigInteger))
     oktmo = deferred(Column(String(11)))
-    updatedate = deferred(Column(Date))
+    updatedate = deferred(Column(Date, default=date(1900, 1, 1)))
+
     housenum = Column(String(20))
     eststatus = Column(SmallInteger)
     buildnum = Column(String(10))
