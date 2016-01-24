@@ -10,7 +10,7 @@ from urllib2 import URLError
 from os.path import exists
 import rarfile
 import fias_db
-from fias_db import House, Addrobj, Normdoc
+from fias_db import House, HouseInt, Addrobj, Normdoc
 from uuid import UUID
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -21,7 +21,7 @@ def strpdate(string, fmt):
 
 today = date.today()
 
-updating = ("normdoc", "addrobj", "socrbase", "house")
+updating = ("normdoc", "addrobj", "socrbase", "houseint", "house")
 Session = sessionmaker()
 session = Session()
 upd = False
@@ -349,6 +349,7 @@ def house_row(name, attrib):
             removed_hous[guid_i] = updatedate
             if rec is not None:
                 pushed_hous.pop(guid_i)
+                session.flush() #!!!
                 session.delete(rec)
             return
         if guid_i in removed_hous:
@@ -405,6 +406,95 @@ def house_row(name, attrib):
             h_cache[guid_i] = rec
 
 
+def houseint_row(name, attrib):
+    global upd, now_row, now_row_, h_cache, pushed_hous, removed_hous
+
+    if name == 'HouseInterval':
+        now_row_ += 1
+        if now_row_ == 250000:
+            now_row = now_row + now_row_
+            now_row_ = 0
+            logging.info((now_row, len(h_cache),
+                          len(pushed_hous), len(removed_hous)))
+            h_cache = {}
+            session.flush()
+        if upd:
+            session.query(HouseInt).filter_by(
+                houseid=attrib['HOUSEINTID']).delete()
+
+        del attrib['COUNTER']
+        ed = attrib.pop('ENDDATE').split('-')
+        enddate = date(int(ed[0]), int(ed[1]), int(ed[2]))
+        sd = attrib.pop('STARTDATE').split('-')
+        startdate = date(int(sd[0]), int(sd[1]), int(sd[2]))
+        ud = attrib.pop('UPDATEDATE').split('-')
+        updatedate = date(int(ud[0]), int(ud[1]), int(ud[2]))
+        guid = UUID(attrib.pop("INTGUID"))
+        guid_i = guid.int
+        rec = pushed_hous.get(guid_i, None)
+        strange = startdate >= enddate
+        if (not strange) and (enddate < today) and\
+                (rec is None or rec.updatedate <= updatedate):
+            removed_hous[guid_i] = updatedate
+            if rec is not None:
+                session.flush()
+                pushed_hous.pop(guid_i)
+                session.delete(rec)
+            return
+        if guid_i in removed_hous:
+            if updatedate <= removed_hous[guid_i]:
+                return
+            else:
+                removed_hous.pop(guid_i)
+
+        normdoc = attrib.pop('NORMDOC', None)
+        attrib['ao_id'] = AoGuidId.getid(attrib.pop('AOGUID'), False)
+        if attrib['ao_id'] is None:
+            return
+
+        if (strange or (startdate >= today) or upd) and (rec is None):
+            # If house is 'future' check if that already in DB
+            # Other houses should not be in DB:
+            # 'past' houses are skipped and current is only one
+            if guid_i in h_cache:
+                rec = h_cache[guid_i]
+            else:
+                rec = session.query(HouseInt).get(guid)
+
+        if rec is None:
+            rec = fias_db.HouseInt(attrib)
+            rec.intguid = guid
+            session.add(rec)
+        else:
+            if updatedate > rec.updatedate or\
+                    (updatedate == rec.updatedate) and (enddate > rec.enddate):
+                attrib.setdefault('IFNSFL', None)
+                attrib.setdefault('TERRIFNSFL', None)
+                attrib.setdefault('IFNSUL', None)
+                attrib.setdefault('TERRIFNSUL', None)
+
+                attrib.setdefault('POSTALCODE', None)
+                attrib.setdefault('OKTMO', None)
+                attrib.setdefault('OKATO', None)
+
+                attrib.setdefault('HOUSENUM', None)
+                attrib.setdefault('BUILDNUM', None)
+                attrib.setdefault('STRUCNUM', None)
+                rec.fromdic(attrib)
+            else:
+                return
+        rec.enddate = enddate
+        rec.startdate = startdate
+        rec.updatedate = updatedate
+        rec.normdoc = NormdocGuidId.getid(normdoc)
+
+        if (startdate >= today) or strange:
+            pushed_hous[guid_i] = rec
+        else:
+            pushed_hous.pop(guid_i, None)
+            h_cache[guid_i] = rec
+
+
 def UpdateTable(table, fil, engine=None):
     global upd, pushed_rows, now_row
     if fil is None:
@@ -431,9 +521,17 @@ def UpdateTable(table, fil, engine=None):
             House.__table__.drop(engine)
             House.__table__.create(engine)
         p.StartElementHandler = house_row
+    elif table == 'houseint':
+        if not upd:
+            HouseInt.__table__.drop(engine)
+            HouseInt.__table__.create(engine)
+        p.StartElementHandler = houseint_row
     p.ParseFile(fil)
     AoGuidId.objcache = {}
     AoGuidId.objcache_ = {}
+    h_cache = {}
+    removed_hous = {}
+    pushed_hous = {}
     session.commit()
     session.expunge_all()
     if (not upd) and (engine.name == 'postgresql'):

@@ -142,6 +142,29 @@ class Addrobj(FiasRow, Base):
     livestatus = Column(Boolean, index=True)
 
 
+class HouseInt(FiasRow, Base):
+    __tablename__ = 'fias_houseint'
+    intguid = Column(GUID, primary_key=True)
+    houseintid = Column(GUID)
+    startdate = Column(Date, default=date(1900, 1, 1))
+    enddate = Column(Date, default=date(2100, 1, 1))
+
+    postalcode = deferred(Column(Integer))
+    ifnsfl = deferred(Column(SmallInteger))
+    terrifnsfl = deferred(Column(SmallInteger))
+    ifnsul = deferred(Column(SmallInteger))
+    terrifnsul = deferred(Column(SmallInteger))
+    okato = deferred(Column(BigInteger))
+    oktmo = deferred(Column(String(11)))
+    updatedate = deferred(Column(Date, default=date(1900, 1, 1)))
+
+    ao_id = Column(Integer, index=False)
+    normdoc = deferred(Column(Integer))
+    intstart = Column(Integer, index=False)
+    intend = Column(Integer, index=False)
+    intstatus = Column(SmallInteger)
+
+
 class House(FiasRow, Base):
     __tablename__ = 'fias_house'
     houseguid = Column(GUID, primary_key=True)
@@ -149,7 +172,6 @@ class House(FiasRow, Base):
     startdate = Column(Date, default=date(1900, 1, 1))
     enddate = Column(Date, default=date(2100, 1, 1))
 
-    #f_id = Column(Integer, primary_key=True)
     postalcode = deferred(Column(Integer))
     ifnsfl = deferred(Column(SmallInteger))
     terrifnsfl = deferred(Column(SmallInteger))
