@@ -86,8 +86,7 @@ class Socrbase(FiasRow, Base):
 
 class Normdoc(FiasRow, Base):
     __tablename__ = 'fias_normdoc'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    normdocid = Column(GUID)
+    normdocid = Column(GUID, primary_key=True)
     docname = Column(String)
     docdate = Column(Date)
     docnum = Column(String(20))
@@ -138,7 +137,7 @@ class Addrobj(FiasRow, Base):
     centstatus = deferred(Column(SmallInteger))
     operstatus = deferred(Column(SmallInteger))
     currstatus = deferred(Column(SmallInteger))
-    normdoc = deferred(Column(Integer))
+    normdoc = deferred(Column(GUID))
     livestatus = Column(Boolean, index=True)
 
 
@@ -159,7 +158,7 @@ class HouseInt(FiasRow, Base):
     updatedate = deferred(Column(Date, default=date(1900, 1, 1)))
 
     ao_id = Column(Integer, index=False)
-    normdoc = deferred(Column(Integer))
+    normdoc = deferred(Column(GUID))
     intstart = Column(Integer, index=False)
     intend = Column(Integer, index=False)
     intstatus = Column(SmallInteger)
@@ -188,7 +187,7 @@ class House(FiasRow, Base):
     strstatus = Column(SmallInteger)
     ao_id = Column(Integer, index=False)
     statstatus = Column(SmallInteger)
-    normdoc = deferred(Column(Integer))
+    normdoc = deferred(Column(GUID))
 
     def makeonestr(self, space=u' '):
         _str = u''

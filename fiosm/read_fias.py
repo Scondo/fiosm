@@ -240,7 +240,6 @@ class GuidId(object):
             self.objcache[guid.int] = idO
 
 
-NormdocGuidId = GuidId('normdocid', fias_db.Normdoc)
 AoGuidId = GuidId('aoguid', fias_db.Addrobj, True)
 
 
@@ -270,7 +269,8 @@ def normdoc_row(name, attrib):
             logging.info(now_row)
             session.flush()
         attrib['normdocid'] = UUID(attrib.pop('NORMDOCID'))
-        NormdocGuidId.pushrec(attrib)
+        rec = Normdoc(attrib)
+        session.add(rec)
 
 
 def socr_obj_row(name, attrib):
@@ -291,7 +291,7 @@ def addr_obj_row(name, attrib):
             return
 
         if 'NORMDOC' in attrib:
-            attrib['NORMDOC'] = NormdocGuidId.getid(UUID(attrib['NORMDOC']))
+            attrib['NORMDOC'] = UUID(attrib['NORMDOC'])
         ed = attrib.pop('ENDDATE').split('-')
         attrib['ENDDATE'] = date(int(ed[0]), int(ed[1]), int(ed[2]))
         sd = attrib.pop('STARTDATE').split('-')
@@ -313,22 +313,19 @@ def addr_obj_row(name, attrib):
 removed_hous = {}
 # Keys are guids, values are records
 pushed_hous = {}
-h_cache = {}
 broken_house = frozenset((UUID('ea1e5154-7588-4220-8691-6b63bb93c3d4').int,
                           ))
 
 
 def house_row(name, attrib):
-    global upd, now_row, now_row_, h_cache, pushed_hous, removed_hous
+    global upd, now_row, now_row_, pushed_hous, removed_hous
 
     if name == 'House':
         now_row_ += 1
         if now_row_ == 250000:
             now_row = now_row + now_row_
             now_row_ = 0
-            logging.info((now_row, len(h_cache),
-                          len(pushed_hous), len(removed_hous)))
-            h_cache = {}
+            logging.info((now_row, len(pushed_hous), len(removed_hous)))
             session.flush()
         if upd:
             session.query(House).filter_by(houseid=attrib['HOUSEID']).delete()
@@ -367,10 +364,7 @@ def house_row(name, attrib):
             # If house is 'future' check if that already in DB
             # Other houses should not be in DB:
             # 'past' houses are skipped and current is only one
-            if guid_i in h_cache:
-                rec = h_cache[guid_i]
-            else:
-                rec = session.query(House).get(guid)
+            rec = session.query(House).get(guid)
 
         if rec is None:
             rec = fias_db.House(attrib)
@@ -397,26 +391,24 @@ def house_row(name, attrib):
         rec.enddate = enddate
         rec.startdate = startdate
         rec.updatedate = updatedate
-        rec.normdoc = NormdocGuidId.getid(normdoc)
+        if normdoc:
+            rec.normdoc = UUID(normdoc)
 
         if (startdate >= today) or strange or (guid_i in broken_house):
             pushed_hous[guid_i] = rec
         else:
             pushed_hous.pop(guid_i, None)
-            h_cache[guid_i] = rec
 
 
 def houseint_row(name, attrib):
-    global upd, now_row, now_row_, h_cache, pushed_hous, removed_hous
+    global upd, now_row, now_row_, pushed_hous, removed_hous
 
     if name == 'HouseInterval':
         now_row_ += 1
         if now_row_ == 250000:
             now_row = now_row + now_row_
             now_row_ = 0
-            logging.info((now_row, len(h_cache),
-                          len(pushed_hous), len(removed_hous)))
-            h_cache = {}
+            logging.info((now_row, len(pushed_hous), len(removed_hous)))
             session.flush()
         if upd:
             session.query(HouseInt).filter_by(
@@ -456,10 +448,7 @@ def houseint_row(name, attrib):
             # If house is 'future' check if that already in DB
             # Other houses should not be in DB:
             # 'past' houses are skipped and current is only one
-            if guid_i in h_cache:
-                rec = h_cache[guid_i]
-            else:
-                rec = session.query(HouseInt).get(guid)
+            rec = session.query(HouseInt).get(guid)
 
         if rec is None:
             rec = fias_db.HouseInt(attrib)
@@ -486,13 +475,13 @@ def houseint_row(name, attrib):
         rec.enddate = enddate
         rec.startdate = startdate
         rec.updatedate = updatedate
-        rec.normdoc = NormdocGuidId.getid(normdoc)
+        if normdoc:
+            rec.normdoc = UUID(normdoc)
 
         if (startdate >= today) or strange:
             pushed_hous[guid_i] = rec
         else:
             pushed_hous.pop(guid_i, None)
-            h_cache[guid_i] = rec
 
 
 def UpdateTable(table, fil, engine=None):
@@ -529,7 +518,6 @@ def UpdateTable(table, fil, engine=None):
     p.ParseFile(fil)
     AoGuidId.objcache = {}
     AoGuidId.objcache_ = {}
-    h_cache = {}
     removed_hous = {}
     pushed_hous = {}
     session.commit()
