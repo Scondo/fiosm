@@ -1,7 +1,14 @@
 #!/usr/bin/python
 # -*- coding: UTF-8 -*-
 from __future__ import division
+import logging
+import nice_street
 from config import *
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import relationship, backref, joinedload
+from sqlalchemy import ForeignKey, Column, Integer, BigInteger, SmallInteger
+from fias_db import Base, Socrbase, House, Addrobj, GUID
 if use_osm:
     import psycopg2
     import ppygis
@@ -10,9 +17,7 @@ if use_osm:
     psycopg2.extensions.register_type(psycopg2.extensions.UNICODEARRAY)
 else:
     psycopg2 = None
-#import copy
-import logging
-import nice_street
+
 
 socr_cache = {}
 #with keys socr#aolev
@@ -23,11 +28,6 @@ typ_cond = {'all': '',
     'not found': None
          }
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm import relationship, backref, joinedload
-from sqlalchemy import ForeignKey, Column, Integer, BigInteger, SmallInteger
-from fias_db import Base, Socrbase, House, Addrobj, GUID
 
 if use_osm:
     class Statistic(Base):
@@ -500,7 +500,7 @@ class fias_AO(object):
                     name = None
             else:
                 name = None
-            if name:
+            if name and name[0]:
                 self._name = name[0]
             else:
                 self._name = self.names().next()
