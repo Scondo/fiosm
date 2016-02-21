@@ -47,6 +47,62 @@ def do_executemany_patched(self, cursor, statement, parameters, context=None):
 from sqlalchemy.engine.default import DefaultDialect
 DefaultDialect.do_executemany = do_executemany_patched
 
+import multiprocessing
+import io
+
+
+class AsyncRarServ(multiprocessing.Process):
+    def __init__(self, *args, **kwargs):
+        self.src = kwargs.pop('src')
+        self.filename = kwargs.pop('filename')
+        multiprocessing.Process.__init__(self, *args, **kwargs)
+        self.queue = multiprocessing.Queue(10)
+        self.fin = multiprocessing.Event()
+
+    def run(self):
+        rar = rarfile.RarFile(self.src)
+        rared = rar.open(self.filename)
+        while rared.remain > 0:
+            line = rared.read(102400)
+            self.queue.put(line)
+        self.fin.set()
+        rared.close()
+        rar.close()
+
+
+class AsyncRarCli(io.IOBase):
+    def __init__(self, src, filename):
+        self.srv = AsyncRarServ(src=src, filename=filename)
+        self.buf = bytearray()
+        self.srv.start()
+
+    def read(self, n=None):
+        if not self.buf:
+            while self.srv.queue.empty():
+                if self.srv.fin.wait(0.1):
+                    if self.srv.queue.empty():
+                        self.srv.join()
+                        return self.buf
+                    else:
+                        # recursive to fetch remain data
+                        return self.read(n)
+            self.buf = self.srv.queue.get()
+        res = self.buf[:n]
+        self.buf = self.buf[n:]
+        return res
+
+    def readinto(self, b):
+        z = self.read(len(b))
+        z = bytearray(z)
+        b[:] = z[:]
+
+    def readable(self):
+        return True
+
+    def writable(self):
+        return False
+
+
 class FiasFiles(object):
     def __new__(cls):
         if not hasattr(cls, 'instance'):
@@ -111,7 +167,10 @@ class FiasFiles(object):
                         rec.date = fdate
                     except:
                         pass
-                return (arch.open(filename), self.full_ver)
+                filo = AsyncRarCli(self.full_file, filename)
+                #filo = io.BufferedReader(filo, 10240)
+                #return (arch.open(filename), self.full_ver)
+                return (filo, self.full_ver)
 
     def get_updfile(self, table, ver):
         archfile = urlretrieve(self.fias_list[ver].FiasDeltaXmlUrl)
