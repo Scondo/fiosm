@@ -45,7 +45,8 @@ def generate_adj(genders=True):
 
     if matrix:
         for n, wordbase in base_adj.viewitems():
-            lex = morph.parse(wordbase)[0]
+            lex = filter(lambda it: {'nomn'} in it.tag,
+                         morph.parse(wordbase))[0]
             for it in matrix:
                 word = lex.inflect(it).word
                 # Падежное окончание должно быть:
