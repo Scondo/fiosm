@@ -12,14 +12,27 @@ import numerals
 from itertools import chain
 
 
-synonyms = ((u'Первой Маёвки', u'Первой Маевки', u'1 Маевки'),
-#            (u'Нижняя Сыромятническая', u'Сыромятническая Ниж.', u'Ниж. Сыромятническая'),
-#            (u'Новая Сыромятническая', u'Сыромятническая Нов.', u'Нов. Сыромятническая'),
-#            (u'Нижний Сусальный', u'Сусальный Ниж.', u'Ниж. Сусальный'),
-#            (u'Верхний Сусальный', u'Сусальный Верхн.', u'Верхн. Сусальный'),
-#            (u'Нижний Таганский', u'Ниж. Таганский', u'Таганский Ниж.'),
-#            (u'Старый Толмачёвский', u'Толмачевский Ст.', u'Ст. Толмачевский'),
-            (u'Пруд-Ключики', u'Пруд Ключики'),)
+synonyms = ((u'Первой Маёвки', u'1 Маевки'),
+            (u'Пруд-Ключики', u'Пруд Ключики'),
+            (u'Льва Толстого', u'Л.Толстого', u'Л. Толстого', u'Толстого'),
+            (u'К.Воробьёва', u'К.Воробьева', u'Воробьёва'),  # Курск Константина?
+            (u'Константина Царёва', u'Константина Царева',
+             u'К.Царёва', u'К.Царева', u'Царёва', u'Царева'),
+            )
+jo = {u'Толмачёв': u'Толмачев',
+      u'Берёзов': u'Березов',
+      u'Звёздн': u'Звездн',
+      u'Лётн': u'Летн',
+      u'Артём': u'Артем',
+      u'Краснознамён': u'Краснознамен',
+      u'Хрущёв': u'Хрущев',
+      u'Новосёлов': u'Новоселов',
+      u'Зелён': u'Зелен',
+      u'Молодёжн': u'Молодежн',
+      u'Семёнов': u'Семенов',
+      u'Озёрн': u'Озерн',
+      }
+
 all_synonyms = set(chain(*synonyms))
 descr = {u'Большой': (u'Бол.', u'Б.'),
          u'Верхний': (u'Верхн.', u'Верх.', u'В.'),
@@ -27,12 +40,12 @@ descr = {u'Большой': (u'Бол.', u'Б.'),
          u'Западный': (u'Зап.', u'З.'),
          u'Левый': (u'Лев.', u'Л.'),
          u'Малый': (u'Мал.', u'М.'),
-         u'Нижний': (u'Ниж.', u'Н.'),
+         u'Нижний': (u'Нижн.', u'Ниж.', u'Н.'),
          u'Новый': (u'Нов.', u'Н.'),
          u'Правый': (u'Пр.', u'П.'),
          u'Северный': (u'Сев.', u'С.'),
          u'Средний': (u'Ср.', u'С.'),
-         u'Старый': (u'Стар.', u'С.'),
+         u'Старый': (u'Стар.', u'Ст.', u'С.'),
          u'Южный': (u'Юж.', u'Ю.')}
 
 
@@ -46,9 +59,14 @@ suff_morph = pymorphy2.units.KnownSuffixAnalyzer(morph)
 def desc_all_g():
     for full, socr in descr.iteritems():
         yield full
-        f_ = morph.parse(full)[0]
-        yield f_.inflect({'femn'})
-        yield f_.inflect({'neut'})
+        f_ = [it for it in morph.parse(full)
+              if {'ADJF', 'nomn', 'masc'} in it.tag][0]
+        fem = f_.inflect({'femn'})
+        if fem:
+            yield fem.word
+        neut = f_.inflect({'neut'})
+        if neut:
+            yield neut.word
         for s in socr:
             yield s
 desc_all = set(desc_all_g())
@@ -63,15 +81,18 @@ def get_descr(words, fullname):
         desc_word = words[-1]
         words = words[:-1]
     if desc_word.endswith(u'.'):
-        res = set()
-        full_lex = morph.parse(fullname)[0]
+        res = []
+        full_lex = morph.parse(fullname)
+        full_gen = full_lex[0].tag.gender
+        if full_gen is None:
+            full_gen = 'masc'
+            logging.warn(("Unknown gender: ", fullname, full_lex, desc_word))
         for full, socr in descr.iteritems():
             if desc_word in socr:
-                res.update(set(socr))
+                res.extend(socr)
                 desc_lex = [it for it in morph.parse(full)
-                            if {'ADJF'} in it.tag]
-                res.add(desc_lex[0].inflect({full_lex.tag.gender}).word)
-        # todo: перейти обратно к списку, чтобы полные названия были в начале
+                            if {'ADJF', 'nomn', 'masc'} in it.tag]
+                res.insert(0, desc_lex[0].inflect({full_gen}).word.title())
         return (res, words)
     else:
         # TODO: Добавить проверку/пропуск на рассогласование
@@ -123,6 +144,24 @@ def check_synonym(name):
         return (name,)
 
 
+def alt_jo(words):
+    yield words
+    if any([(u'ё' in it) for it in words]):
+        yield [it.replace(u'ё', u'е') for it in words]
+    if any([(u'е' in it) for it in words]):
+        res = []
+        go = False
+        for word in words:
+            res.append(word)
+            for jo_, je_ in jo.iteritems():
+                if je_ in word:
+                    go = True
+                    res[-1] = word.replace(je_, jo_)
+                    break
+        if go:
+            yield res
+
+
 def unslash(basename):
     '''Replace slashes with parentheses
     '''
@@ -172,12 +211,14 @@ def nice(basename, shortname, fullname, place=False):
             if repr_tag is not None:
                 for num in nums:
                     for desc in descs:
-                        if {'ADJF'} in repr_tag:
-                            yield btr_join([num, desc] + words + [fullname, ])
-                            yield btr_join([num, ] + words + [desc, fullname, ])
-                        else:
-                            yield btr_join([desc, num, fullname] + words)
-                            yield btr_join([num, desc, fullname] + words)
+                        for words_ in alt_jo(words):
+                            if {'ADJF'} in repr_tag:
+                                yield btr_join([num, desc] + words_ + [fullname, ])
+                                yield btr_join([num, ] + words_ + [desc, fullname, ])
+                            else:
+                                yield btr_join([num, fullname, desc] + words_)
+                                yield btr_join([desc, num, fullname] + words_)
+                                yield btr_join([num, desc, fullname] + words_)
             basename_ = u" ".join((fullname, name))
 
         yield basename_
