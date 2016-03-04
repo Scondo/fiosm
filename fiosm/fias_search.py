@@ -91,20 +91,24 @@ def Subareas(elem):
     return res
 
 
-def FindByName(pgeom, conn, name, tbl=prefix + ways_table, addcond=""):
+def FindByName(pgeom, conn, name,
+               tbl=prefix + ways_table,
+               addcond="", name_tag="name"):
     '''Get osm representation of object 'name'
     That items must lies within polygon pgeom (polygon of parent territory)
 
     return [osmid]
     '''
     cur = conn.cursor()
-    if pgeom == None:
-        cur.execute("SELECT DISTINCT osm_id FROM " + tbl + \
-                    " WHERE lower(name) = lower(%s)" + addcond, (name,))
+    if pgeom is None:
+        cur.execute("SELECT DISTINCT osm_id FROM " + tbl +
+                    " WHERE lower(" + name_tag + ") = lower(%s)" + addcond,
+                    (name,))
     else:
-        cur.execute("SELECT DISTINCT osm_id FROM " + tbl + \
-                    " WHERE lower(name) = lower(%s) AND ST_Within(way,%s)" + \
-                    addcond, (name, pgeom))
+        cur.execute("SELECT DISTINCT osm_id FROM " + tbl +
+                    " WHERE lower(" + name_tag + ") = lower(%s) "
+                    "AND ST_Within(way,%s)" + addcond,
+                    (name, pgeom))
     return cur.fetchall()
 
 
@@ -129,53 +133,57 @@ def FindAssocPlace(elem, pgeom):
             poly_r.add(kladr[0][1])
         return kladr[0][1]
     for name in elem.names():
-        checked = FindByName(pgeom, elem.conn, name, prefix + poly_table,
-                             " AND building ISNULL")
+        for name_tag in ('name', 'place_name', '"name:ru"',
+                         '"official_name"', '"official_name:ru"'):
+            checked = FindByName(pgeom, elem.conn, name, prefix + poly_table,
+                             " AND building ISNULL", name_tag)
 
-        if len(checked) > 1 and 'boundary' in MultiChk(elem.conn):
-            checked0 = FindByName(pgeom, elem.conn, name, prefix + poly_table,
+            if len(checked) > 1 and 'boundary' in MultiChk(elem.conn):
+                checked0 = FindByName(pgeom, elem.conn, name, prefix + poly_table,
                              " AND building ISNULL AND "
-                             "boundary='administrative'")
-            if len(checked0) != 0:
-                checked = checked0
+                             "boundary='administrative'", name_tag)
+                if len(checked0) != 0:
+                    checked = checked0
 
-        if len(checked) > 1 and 'admin_level' in MultiChk(elem.conn):
-            checked0 = FindByName(pgeom, elem.conn, name, prefix + poly_table,
-                             " AND building ISNULL AND admin_level NOTNULL")
-            if len(checked0) != 0:
-                checked = checked0
+            if len(checked) > 1 and 'admin_level' in MultiChk(elem.conn):
+                checked0 = FindByName(pgeom, elem.conn, name, prefix + poly_table,
+                             " AND building ISNULL AND admin_level NOTNULL", name_tag)
+                if len(checked0) != 0:
+                    checked = checked0
 
-        if len(checked) > 1 and 'place' in MultiChk(elem.conn):
-            checked0 = FindByName(pgeom, elem.conn, name, prefix + poly_table,
+            if len(checked) > 1 and 'place' in MultiChk(elem.conn):
+                checked0 = FindByName(pgeom, elem.conn, name, prefix + poly_table,
                              " AND building ISNULL AND "
                              "place IN ('city', 'town', 'village', 'hamlet', "
-                             "'suburb', 'quarter', 'neighbourhood')")
-            if len(checked0) != 0:
-                checked = checked0
+                             "'suburb', 'quarter', 'neighbourhood')", name_tag)
+                if len(checked0) != 0:
+                    checked = checked0
 
-        for osmid in checked:
-            if check_adm(osmid[0]):
+            checked = [it[0] for it in checked]
+            checked = filter(check_adm, checked)
+            for osmid in checked:
                 elem.name = name
                 if poly_r is not None:
-                    poly_r.add(osmid[0])
-                return osmid
+                    poly_r.add(osmid)
+                    return osmid
 
 
 def FindAssocStreet(elem, pgeom):
     def check_street(osmid):
         if way_r is not None:
-            return osmid[0] not in way_r
-        return session.query(melt.StreetAssoc).get(osmid[0]) is None
+            return osmid not in way_r
+        return session.query(melt.StreetAssoc).get(osmid) is None
 
     session = elem.session
     for name in elem.names():
         checked = FindByName(pgeom, elem.conn, name, prefix + ways_table,
                              " AND highway NOTNULL")
+        checked = [it[0] for it in checked]
         checked = filter(check_street, checked)
         if checked:
             elem.name = name
             if way_r is not None:
-                way_r.update([it[0] for it in checked])
+                way_r.update(checked)
             return checked
 
 
@@ -240,8 +248,8 @@ def AssociateO(elem):
     #find new elements for street if any
     for sub in tuple(elem.subO('street', True)):
         sub_ = melt.fias_AONode(sub)
-        streets=FindAssocStreet(sub_,elem.geom)
-        if streets<>None:
+        streets = FindAssocStreet(sub_, elem.geom)
+        if streets is not None:
             pre = elem.session.query(melt.StreetAssoc).filter_by(ao_id=sub.f_id).all()
             pre = set([it.osm_way for it in pre])
             for street in streets:
@@ -277,7 +285,7 @@ def AssociateO(elem):
             continue
         sub_ = melt.fias_AONode(sub)
         streets = FindAssocStreet(sub_, elem.geom)
-        if not streets is None:
+        if streets is not None:
             for street in streets:
                 assoc = melt.StreetAssoc(sub.f_id, street)
                 elem.session.add(assoc)
