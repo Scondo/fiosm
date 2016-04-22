@@ -512,10 +512,10 @@ class fias_AO(object):
 
     @property
     def osmid(self):
-        if self._osmid == None:
-            if self._kind == 0:
+        if self._osmid is None:
+            if (self._kind == 0) or (self.guid is None):
+                # Do not even try if not found or root
                 return None
-            #Do not even try if not found
             self.calkind()
             #If kind other than 'not found' then we receive osmid
         return self._osmid
@@ -568,9 +568,24 @@ class fias_AONode(fias_AO):
             fias_AO.__init__(self, *args, **kwargs)
         self._subO = {}
 
-    def subO(self, typ, ao_stat=True):
+    def subO(self, typ, ao_stat=True, pullnames=None):
         '''List of subelements'''
+        def get_names_(objs):
+            if not self.conn:
+                return
+            ids = [obj.osmid for obj in objs]
+            cur = self.conn.cursor()
+            cur.execute('SELECT osm_id, name FROM ' + prefix + \
+                        (poly_table if typ == 'found' else ways_table) + \
+                        '  WHERE osm_id = ANY (%s) ', (ids,))
+            names = cur.fetchall()
+            names = dict(names)
+            for obj in objs:
+                obj._name = names[obj.osmid]
+
         if typ in self._subO:
+            if pullnames and typ in ('found', 'street'):
+                get_names_(self._subO[typ])
             return self._subO[typ]
         if typ in ('not found', 'found', 'street'):
             q = self.session.query(Addrobj).filter_by(parentid=self.f_id,
@@ -606,9 +621,9 @@ class fias_AONode(fias_AO):
             return self._subO[typ]
         if typ == 'all':
             res = []
-            res.extend(self.subO('not found', ao_stat))
-            res.extend(self.subO('found', ao_stat))
-            res.extend(self.subO('street', ao_stat))
+            res.extend(self.subO('not found', ao_stat, pullnames))
+            res.extend(self.subO('found', ao_stat, pullnames))
+            res.extend(self.subO('street', ao_stat, pullnames))
             return res
         if typ.endswith('_b'):
             return self.subB(typ)

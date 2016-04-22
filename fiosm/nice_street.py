@@ -23,6 +23,7 @@ jo = {u'Толмачёв': u'Толмачев',
       u'Берёзов': u'Березов',
       u'Звёздн': u'Звездн',
       u'Лётн': u'Летн',
+      u'Лётч': u'Летч',
       u'Артём': u'Артем',
       u'Краснознамён': u'Краснознамен',
       u'Хрущёв': u'Хрущев',
@@ -31,6 +32,7 @@ jo = {u'Толмачёв': u'Толмачев',
       u'Молодёжн': u'Молодежн',
       u'Семёнов': u'Семенов',
       u'Озёрн': u'Озерн',
+      u'Жигулёв': u'Жигулев',
       }
 
 all_synonyms = set(chain(*synonyms))
@@ -82,8 +84,13 @@ def get_descr(words, fullname):
         words = words[:-1]
     if desc_word.endswith(u'.'):
         res = []
-        full_lex = morph.parse(fullname)
-        full_gen = full_lex[0].tag.gender
+        # небольшой набор костылей
+        if fullname.endswith(u'кооператив'):
+            # full_lex = morph.parse(u'кооператив')
+            full_gen = 'masc'
+        else:
+            full_lex = morph.parse(fullname)
+            full_gen = full_lex[0].tag.gender
         if full_gen is None:
             full_gen = 'masc'
             logging.warn(("Unknown gender: ", fullname, full_lex, desc_word))
