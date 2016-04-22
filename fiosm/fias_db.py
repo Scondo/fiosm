@@ -120,16 +120,16 @@ class Addrobj(FiasRow, Base):
     streetcode = deferred(Column(String(4)))
     extrcode = deferred(Column(String(4)))
     sextcode = deferred(Column(String(3)))
-    #KLADR
+    # KLADR
     code = Column(String(17))
     plaincode = deferred(Column(String(15)))
     #NALOG
-    postalcode = deferred(Column(Integer))
-    ifnsfl = deferred(Column(SmallInteger))
-    terrifnsfl = deferred(Column(SmallInteger))
-    ifnsul = deferred(Column(SmallInteger))
-    terrifnsul = deferred(Column(SmallInteger))
-    okato = deferred(Column(BigInteger))
+    postalcode = deferred(Column(String(6)))
+    ifnsfl = deferred(Column(String(4)))
+    terrifnsfl = deferred(Column(String(4)))
+    ifnsul = deferred(Column(String(4)))
+    terrifnsul = deferred(Column(String(4)))
+    okato = deferred(Column(String(11)))
     oktmo = deferred(Column(String(11)))
 
     updatedate = deferred(Column(Date))
@@ -148,13 +148,14 @@ class HouseInt(FiasRow, Base):
     startdate = Column(Date, default=date(1900, 1, 1))
     enddate = Column(Date, default=date(2100, 1, 1))
 
-    postalcode = deferred(Column(Integer))
-    ifnsfl = deferred(Column(SmallInteger))
-    terrifnsfl = deferred(Column(SmallInteger))
-    ifnsul = deferred(Column(SmallInteger))
-    terrifnsul = deferred(Column(SmallInteger))
-    okato = deferred(Column(BigInteger))
+    postalcode = deferred(Column(String(6)))
+    ifnsfl = deferred(Column(String(4)))
+    terrifnsfl = deferred(Column(String(4)))
+    ifnsul = deferred(Column(String(4)))
+    terrifnsul = deferred(Column(String(4)))
+    okato = deferred(Column(String(11)))
     oktmo = deferred(Column(String(11)))
+
     updatedate = deferred(Column(Date, default=date(1900, 1, 1)))
 
     ao_id = Column(Integer, index=False)
@@ -171,12 +172,12 @@ class House(FiasRow, Base):
     startdate = Column(Date, default=date(1900, 1, 1))
     enddate = Column(Date, default=date(2100, 1, 1))
 
-    postalcode = deferred(Column(Integer))
-    ifnsfl = deferred(Column(SmallInteger))
-    terrifnsfl = deferred(Column(SmallInteger))
-    ifnsul = deferred(Column(SmallInteger))
-    terrifnsul = deferred(Column(SmallInteger))
-    okato = deferred(Column(BigInteger))
+    postalcode = deferred(Column(String(6)))
+    ifnsfl = deferred(Column(String(4)))
+    terrifnsfl = deferred(Column(String(4)))
+    ifnsul = deferred(Column(String(4)))
+    terrifnsul = deferred(Column(String(4)))
+    okato = deferred(Column(String(11)))
     oktmo = deferred(Column(String(11)))
     updatedate = deferred(Column(Date, default=date(1900, 1, 1)))
 
