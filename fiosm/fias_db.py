@@ -132,12 +132,14 @@ class Addrobj(FiasRow, Base):
     okato = deferred(Column(String(11)))
     oktmo = deferred(Column(String(11)))
 
-    updatedate = deferred(Column(Date))
+    updatedate = deferred(Column(Date, default=date(1900, 1, 1)))
     actstatus = deferred(Column(SmallInteger))
     centstatus = deferred(Column(SmallInteger))
     operstatus = deferred(Column(SmallInteger))
     currstatus = deferred(Column(SmallInteger))
     normdoc = deferred(Column(GUID))
+    cadnum = deferred(Column(String(100)))
+    divtype = Column(SmallInteger, default=0)
     livestatus = Column(Boolean, index=True)
 
 
@@ -188,6 +190,8 @@ class House(FiasRow, Base):
     strstatus = Column(SmallInteger)
     ao_id = Column(Integer, index=False)
     statstatus = Column(SmallInteger)
+    cadnum = deferred(Column(String(100)))
+    divtype = Column(SmallInteger, default=0)
     normdoc = deferred(Column(GUID))
 
     def makeonestr(self, space=u' '):
