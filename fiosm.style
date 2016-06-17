@@ -42,6 +42,9 @@ node       capital      text         linear
 node,way   highway      text         linear
 node,way   name         text         #no
 node,way   name:ru      text         #no
+node,way   place_name   text         #no
+node,way   official_name   text         #no
+node,way   official_name:ru   text         #no
 #node,way   oneway       text         linear
 node,way   place        text         polygon
 #way        tracktype    text         linear
