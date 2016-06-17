@@ -14,6 +14,7 @@ from fias_db import House, HouseInt, Addrobj, Normdoc
 from uuid import UUID
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.sql.functions import func
 
 
 def strpdate(string, fmt):
@@ -109,6 +110,7 @@ class FiasFiles(object):
             cls.instance = super(FiasFiles, cls).__new__(cls)
             self = cls.instance
             self.full_file = None
+            self.upd_files = {}
             self.full_ver = None
             self.full_temp = None
             self.fias_list = {}
@@ -141,10 +143,10 @@ class FiasFiles(object):
             return 0
 
     def get_fullarch(self):
-        if self.full_file == None or not exists(self.full_file):
+        if self.full_file is None or not exists(self.full_file):
             self.full_file = urlretrieve(
-                            self.fias_list[self.maxver()].FiasCompleteXmlUrl,
-                            self.full_file)[0]
+                self.fias_list[self.maxver()].FiasCompleteXmlUrl,
+                self.full_file)[0]
             self.full_ver = self.maxver()
 
     def get_fullfile(self, table):
@@ -173,11 +175,13 @@ class FiasFiles(object):
                 return (filo, self.full_ver)
 
     def get_updfile(self, table, ver):
-        archfile = urlretrieve(self.fias_list[ver].FiasDeltaXmlUrl)
-        arch = rarfile.RarFile(archfile)
+        if ver not in self.upd_files:
+            self.upd_files[ver] = urlretrieve(
+                self.fias_list[ver].FiasDeltaXmlUrl)[0]
+        arch = rarfile.RarFile(self.upd_files[ver])
         for filename in arch.namelist():
-            if filename.lower().beginswith(table):
-                #Get and save date
+            if filename[3:].lower().startswith(table):
+                # Get and save date
                 try:
                     rec = session.query(fias_db.Versions).get(ver)
                     rec.date = strpdate(filename.split("_")[3], "%Y%m%d")
@@ -198,12 +202,6 @@ class GuidId(object):
         else:
             self.objcache = None
         self.guidn = guidn
-        if guidn in record.__table__.primary_key:
-            self.fast = 1
-        elif 'id' in record.__table__.primary_key:
-            self.fast = 2
-        else:
-            self.fast = 0
         self.record = record
         self.local = None
 
@@ -217,6 +215,7 @@ class GuidId(object):
             self.max = 0
         else:
             self.local = False
+            self.max = session.query(func.max(self.record.id)).scalar()
 
     def __getrec(self, guid_int):
         if not (self.objcache is None):
@@ -224,13 +223,8 @@ class GuidId(object):
                 return self.objcache[guid_int]
             if guid_int in self.objcache_:
                 return self.objcache_[guid_int]
-        if self.fast == 1:
-            return session.query(self.record).get(UUID(int=guid_int))
-        elif self.fast == 2 and guid_int in self.cache:
-            return session.query(self.record).get(self.cache[guid_int])
-        else:
-            return session.query(self.record).\
-                filter_by(**{self.guidn: UUID(int=guid_int)}).first()
+        cond = {self.guidn: UUID(int=guid_int)}
+        return session.query(self.record).filter_by(**cond).first()
 
     def getid(self, guid, create=True):
         if isinstance(guid, UUID):
@@ -263,11 +257,8 @@ class GuidId(object):
                 idO = self.record()
                 setattr(idO, self.guidn, guid)
                 session.add(idO)
-                if self.local:
-                    self.max += 1
-                    idO.id = self.max
-                else:
-                    session.commit()
+                self.max += 1
+                idO.id = self.max
             self.cache[guid_int] = idO.id
 
         return self.cache[guid_int]
@@ -282,14 +273,16 @@ class GuidId(object):
             self.chklocal()
             return self.pushrec(dic)
         else:
+            # Non-local or present
             idO = self.__getrec(guid.int)
 
         if idO is None:
+            if not self.local:
+                # Non-local and new
+                self.max += 1
+                dic["id"] = self.max
             idO = self.record(dic)
             session.add(idO)
-            if not self.local:
-                #In non-local DB we must commit to get id
-                session.commit()
         else:
             if (comp is None) or comp(dic, idO):
                 del dic[self.guidn]
@@ -297,6 +290,12 @@ class GuidId(object):
         self.cache[guid.int] = idO.id
         if not (self.objcache is None):
             self.objcache[guid.int] = idO
+        try:
+            session.flush()
+        except:
+            print sorted(dic.items())
+            print sorted(idO.asdic().items())
+            raise
 
 
 AoGuidId = GuidId('aoguid', fias_db.Addrobj, True)
@@ -313,13 +312,15 @@ def addr_cmp(dic, rec):
     if dic['AOID'] == rec.aoid:
         #New rec is always better
         return True
+    if dic['UPDATEDATE'] > rec.updatedate:
+        return True
     if dic['STARTDATE'] > rec.startdate:
         return True
     return False
 
 
 def normdoc_row(name, attrib):
-    global now_row, now_row_
+    global upd, now_row, now_row_
     if name == "NormativeDocument":
         now_row_ += 1
         if now_row_ == 100000:
@@ -328,6 +329,12 @@ def normdoc_row(name, attrib):
             logging.info(now_row)
             session.flush()
         attrib['normdocid'] = UUID(attrib.pop('NORMDOCID'))
+        if upd:
+            old_doc = session.query(Normdoc).get(attrib['normdocid'])
+            if old_doc:
+                session.delete(old_doc)
+                logging.info(now_row_)
+                session.flush()
         rec = Normdoc(attrib)
         session.add(rec)
 
@@ -351,10 +358,12 @@ def addr_obj_row(name, attrib):
 
         if 'NORMDOC' in attrib:
             attrib['NORMDOC'] = UUID(attrib['NORMDOC'])
-        ed = attrib.pop('ENDDATE').split('-')
-        attrib['ENDDATE'] = date(int(ed[0]), int(ed[1]), int(ed[2]))
-        sd = attrib.pop('STARTDATE').split('-')
-        attrib['STARTDATE'] = date(int(sd[0]), int(sd[1]), int(sd[2]))
+        d = attrib.pop('ENDDATE').split('-')
+        attrib['ENDDATE'] = date(int(d[0]), int(d[1]), int(d[2]))
+        d = attrib.pop('STARTDATE').split('-')
+        attrib['STARTDATE'] = date(int(d[0]), int(d[1]), int(d[2]))
+        d = attrib.pop('UPDATEDATE').split('-')
+        attrib['UPDATEDATE'] = date(int(d[0]), int(d[1]), int(d[2]))
         attrib['aoguid'] = UUID(attrib.pop('AOGUID'))
         attrib['parentid'] = AoGuidId.getid(attrib.pop('PARENTGUID', None))
 
@@ -471,7 +480,7 @@ def houseint_row(name, attrib):
             session.flush()
         if upd:
             session.query(HouseInt).filter_by(
-                houseid=attrib['HOUSEINTID']).delete()
+                houseintid=attrib['HOUSEINTID']).delete()
 
         del attrib['COUNTER']
         ed = attrib.pop('ENDDATE').split('-')
