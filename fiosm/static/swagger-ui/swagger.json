@@ -1,0 +1,268 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "version": "0.1.0",
+        "title": "Fiosm",
+        "description": "Связка ФИАС и ОСМ"
+    },
+    "basePath": "/json",
+    "paths": {
+        "/{guid}": {
+            "get": {
+                "description": "Основная информация и статистика по элементу адресации\n",
+                "parameters": [
+                    {
+                        "name": "guid",
+                        "in": "path",
+                        "description": "Идентификатор объекта",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "schema": {
+                            "type": "object",
+                            "required": [
+                                "name",
+                                "kind",
+                                "stat"
+                            ],
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "description": "Название (по возможности как на карте)"
+                                },
+                                "kind": {
+                                    "type": "integer",
+                                    "format": "int32",
+                                    "description": "Статус сопоставления: 1 - улица; 2 - территория; 3 - нет в ОСМ"
+                                },
+                                "osmid": {
+                                    "type": "integer",
+                                    "format": "int64"
+                                },
+                                "stat": {
+                                    "type": "object",
+                                    "properties": {
+                                        "all": {
+                                            "type": "integer",
+                                            "description": "Всего дочерних элементов"
+                                        },
+                                        "found": {
+                                            "type": "integer",
+                                            "description": "Дочерних элементов найденно в виде территорий"
+                                        },
+                                        "street": {
+                                            "type": "integer",
+                                            "description": "Дочерних элементов найденно в виде улиц"
+                                        },
+                                        "all_b": {
+                                            "type": "integer",
+                                            "description": "Всего домов"
+                                        },
+                                        "found_b": {
+                                            "type": "integer",
+                                            "description": "Найдено домов"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/{guid}/full": {
+            "get": {
+                "description": "Детальная информация ФИАС\n",
+                "parameters": [
+                    {
+                        "name": "guid",
+                        "in": "path",
+                        "description": "Идентификатор объекта",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "parentguid": {
+                                    "type": "string",
+                                    "description": "Идентификатор родительского объекта"
+                                },
+                                "parentname": {
+                                    "type": "string",
+                                    "description": "Название родительского объекта"
+                                },
+                                "offname": {
+                                    "type": "string",
+                                    "description": "Официальное название"
+                                },
+                                "formalname": {
+                                    "type": "string",
+                                    "description": "Формализованное название"
+                                },
+                                "fullname": {
+                                    "type": "string",
+                                    "description": "Статусная часть(полностью)"
+                                },
+                                "shortname": {
+                                    "type": "string",
+                                    "description": "Статусная часть(сокращенно)"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/{guid}/subo": {
+            "get": {
+                "description": "Список дочерних адресных элементов\n",
+                "parameters": [
+                    {
+                        "name": "guid",
+                        "in": "path",
+                        "description": "Идентификатор родительского элемента",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "schema": {
+                            "title": "Список элементов",
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": [
+                                    "name",
+                                    "guid",
+                                    "kind"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "description": "Название (по возможности как на карте)"
+                                    },
+                                    "guid": {
+                                        "type": "string",
+                                        "description": "Идентификатор элемента"
+                                    },
+                                    "kind": {
+                                        "type": "integer",
+                                        "format": "int32",
+                                        "description": "Статус сопоставления: 1 - улица; 2 - территория; 3 - нет в ОСМ"
+                                    },
+                                    "osmid": {
+                                        "type": "integer",
+                                        "format": "int64"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/{guid}/subb": {
+            "get": {
+                "description": "Список домов\n",
+                "parameters": [
+                    {
+                        "name": "guid",
+                        "in": "path",
+                        "description": "Идентификатор адресного элемента",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "schema": {
+                            "title": "Список домов",
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": [
+                                    "name"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "description": "Номер дома (одной строкой с корпусом и т.д.)"
+                                    },
+                                    "guid": {
+                                        "type": "string",
+                                        "description": "Идентификатор элемента"
+                                    },
+                                    "point": {
+                                        "type": "integer",
+                                        "description": "Тип объекта в ОСМ: 1 - точка; 0 - полигон"
+                                    },
+                                    "osmid": {
+                                        "type": "integer",
+                                        "format": "int64"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/{guid}/bld/{bldid}": {
+            "get": {
+                "description": "Информация о доме\n",
+                "parameters": [
+                    {
+                        "name": "guid",
+                        "in": "path",
+                        "description": "Идентификатор адресного элемента.\nЕсли идентификатор дома задан кодом guid из ФИАС, может быть любой непустой строкой.\n",
+                        "required": true,
+                        "type": "string"
+                    },
+                    {
+                        "name": "bldid",
+                        "in": "path",
+                        "description": "Идентификатор дома",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "schema": {
+                            "title": "Описание дома",
+                            "items": {
+                                "type": "object",
+                                "required": [
+                                    "name"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "description": "Номер дома (одной строкой с корпусом и т.д.)"
+                                    },
+                                    "guid": {
+                                        "type": "string",
+                                        "description": "Идентификатор элемента"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -171,3 +171,7 @@ pip-log.txt
 #streetmangler
 streetmangler.py
 data
+#Swagger
+fiosm/static/swagger-ui/*
+!fiosm/static/swagger-ui/swagger.json
+!fiosm/static/swagger-ui/readme.txt
