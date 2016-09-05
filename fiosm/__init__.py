@@ -40,6 +40,6 @@ def main(global_config, **settings):
     config.add_route('json_full', 'json/{guid}/full')
     config.add_route('json_subo', 'json/{guid}/subo')
     config.add_route('json_subb', 'json/{guid}/subb')
-    config.add_route('json_subb', 'json/{guid}/bld/{bld}')
+    config.add_route('json_build', 'json/{guid}/bld/{bld}')
     config.scan()
     return config.make_wsgi_app()
