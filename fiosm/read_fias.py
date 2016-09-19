@@ -5,7 +5,8 @@ import xml.parsers.expat
 import datetime
 from datetime import date
 import logging
-from urllib import urlretrieve, urlcleanup
+import urllib
+from urllib import urlretrieve
 from urllib2 import URLError
 from os.path import exists
 import rarfile
@@ -15,6 +16,16 @@ from uuid import UUID
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.functions import func
+import progressbar
+
+
+pbar = None
+
+
+def loadProgress(bl, blsize, size):
+    dldsize = min(bl * blsize, size)
+    p = float(dldsize) / size
+    pbar.update(p)
 
 
 def strpdate(string, fmt):
@@ -59,10 +70,14 @@ class AsyncRarServ(multiprocessing.Process):
         multiprocessing.Process.__init__(self, *args, **kwargs)
         self.queue = multiprocessing.Queue(10)
         self.fin = multiprocessing.Event()
+        self.go = multiprocessing.Event()
+        self.size = multiprocessing.queues.SimpleQueue()
 
     def run(self):
         rar = rarfile.RarFile(self.src)
         rared = rar.open(self.filename)
+        self.size.put(rared.inf.file_size)
+        self.go.set()
         while rared.remain > 0:
             line = rared.read(102400)
             self.queue.put(line)
@@ -76,6 +91,8 @@ class AsyncRarCli(io.IOBase):
         self.srv = AsyncRarServ(src=src, filename=filename)
         self.buf = bytearray()
         self.srv.start()
+        self.passed = 0
+        self._size = None
 
     def read(self, n=None):
         if not self.buf:
@@ -90,7 +107,19 @@ class AsyncRarCli(io.IOBase):
             self.buf = self.srv.queue.get()
         res = self.buf[:n]
         self.buf = self.buf[n:]
+        self.passed += len(res)
         return res
+
+    def tell(self):
+        return self.passed
+
+    def size(self):
+        if self._size is None:
+            if self.srv.go.wait(10):
+                self._size = self.srv.size.get()
+            else:
+                raise ValueError('File not opened')
+        return self._size
 
     def readinto(self, b):
         z = self.read(len(b))
@@ -143,11 +172,15 @@ class FiasFiles(object):
             return 0
 
     def get_fullarch(self):
+        global pbar
         if self.full_file is None or not exists(self.full_file):
+            pbar = progressbar.ProgressBar(widgets=['Download: ',
+                progressbar.Bar(), ' ', progressbar.ETA()], maxval=1.0).start()
             self.full_file = urlretrieve(
                 self.fias_list[self.maxver()].FiasCompleteXmlUrl,
-                self.full_file)[0]
+                self.full_file, reporthook=loadProgress)[0]
             self.full_ver = self.maxver()
+            pbar.finish()
 
     def get_fullfile(self, table):
         self.get_fullarch()
@@ -175,9 +208,14 @@ class FiasFiles(object):
                 return (filo, self.full_ver)
 
     def get_updfile(self, table, ver):
+        global pbar
         if ver not in self.upd_files:
+            pbar = progressbar.ProgressBar(widgets=['Download: ',
+                progressbar.Bar(), ' ', progressbar.ETA()], maxval=1.0).start()
             self.upd_files[ver] = urlretrieve(
-                self.fias_list[ver].FiasDeltaXmlUrl)[0]
+                self.fias_list[ver].FiasDeltaXmlUrl,
+                reporthook=loadProgress)[0]
+            pbar.finish()
         arch = rarfile.RarFile(self.upd_files[ver])
         for filename in arch.namelist():
             if filename[3:].lower().startswith(table):
@@ -190,7 +228,7 @@ class FiasFiles(object):
                 return arch.open(filename)
 
     def __del__(self):
-        urlcleanup()
+        urllib.urlcleanup()
 
 
 class GuidId(object):
@@ -206,8 +244,9 @@ class GuidId(object):
         self.local = None
 
     def flush_cache(self):
-        self.objcache_ = self.objcache
-        self.objcache = {}
+        if len(self.objcache) > 10000:
+            self.objcache_ = self.objcache
+            self.objcache = {}
 
     def chklocal(self):
         if session.query(self.record).count() == 0:
@@ -225,6 +264,16 @@ class GuidId(object):
                 return self.objcache_[guid_int]
         cond = {self.guidn: UUID(int=guid_int)}
         return session.query(self.record).filter_by(**cond).first()
+
+    def precache(self, guid_list=[]):
+        guid_list = set([UUID(it) for it in guid_list if it])
+        guid_list = [it for it in guid_list if it not in self.objcache]
+        q = session.query(self.record)
+        q = q.filter(getattr(self.record, self.guidn).in_(guid_list))
+        for obj in q.all():
+            guid_int = getattr(obj, self.guidn).int
+            if guid_int not in self.objcache:
+                self.objcache[guid_int] = obj
 
     def getid(self, guid, create=True):
         if isinstance(guid, UUID):
@@ -259,6 +308,7 @@ class GuidId(object):
                 session.add(idO)
                 self.max += 1
                 idO.id = self.max
+                session.flush() # force save new id
             self.cache[guid_int] = idO.id
 
         return self.cache[guid_int]
@@ -305,10 +355,6 @@ def addr_cmp(dic, rec):
     if rec.aoid is None:
         #Dummy always should be replaced
         return True
-    if dic['parentid'] != rec.parentid:
-        # force save new records
-        # if it could be referenced
-        session.commit()
     if dic['AOID'] == rec.aoid:
         #New rec is always better
         return True
@@ -318,6 +364,22 @@ def addr_cmp(dic, rec):
         return True
     return False
 
+count_max = 0
+count_tag = None
+pre_list = []
+pre_att = ''
+tag4tbl = {'addrobj': 'Object',
+           'house': 'House',
+           'normdoc': 'NormativeDocument'}
+
+
+def count_row(name, attrib):
+    global count_max
+    if name == count_tag:
+        count_max += 1
+        if pre_att:
+            pre_list.append(attrib.get(pre_att, None))
+
 
 def normdoc_row(name, attrib):
     global upd, now_row, now_row_
@@ -326,14 +388,14 @@ def normdoc_row(name, attrib):
         if now_row_ == 100000:
             now_row = now_row + now_row_
             now_row_ = 0
-            logging.info(now_row)
+            # logging.info(now_row)
             session.flush()
         attrib['normdocid'] = UUID(attrib.pop('NORMDOCID'))
         if upd:
+            pbar.update(now_row + now_row_)
             old_doc = session.query(Normdoc).get(attrib['normdocid'])
-            if old_doc:
+            if old_doc:  # May be update will be better???
                 session.delete(old_doc)
-                logging.info(now_row_)
                 session.flush()
         rec = Normdoc(attrib)
         session.add(rec)
@@ -346,8 +408,13 @@ def socr_obj_row(name, attrib):
 
 
 def addr_obj_row(name, attrib):
-    global upd, now_row, now_row_
+    global upd, now_row, now_row_, pre_list
     if name == 'Object':
+        if upd:
+            pbar.update(now_row + now_row_)
+            if now_row_ % 100 == 0:
+                AoGuidId.precache(pre_list[:100])
+                pre_list = pre_list[100:]
         if 'NEXTID' in attrib:
             #If one have successor - it's dead
             attrib['LIVESTATUS'] = '0'
@@ -373,7 +440,7 @@ def addr_obj_row(name, attrib):
         if now_row_ == 100000:
             now_row = now_row + now_row_
             now_row_ = 0
-            logging.info(now_row)
+            # logging.info(now_row)
             AoGuidId.flush_cache()
             session.flush()
 
@@ -393,10 +460,15 @@ def house_row(name, attrib):
         if now_row_ == 250000:
             now_row = now_row + now_row_
             now_row_ = 0
-            logging.info((now_row, len(pushed_hous), len(removed_hous)))
+            # logging.info((now_row, len(pushed_hous), len(removed_hous)))
             session.flush()
         if upd:
-            session.query(House).filter_by(houseid=attrib['HOUSEID']).delete()
+            pbar.update(now_row + now_row_)
+            old_h = session.query(House).\
+                filter_by(houseid=attrib['HOUSEID']).first()
+            if old_h:
+                session.delete(old_h)
+                session.flush()
 
         del attrib['COUNTER']
         ed = attrib.pop('ENDDATE').split('-')
@@ -553,13 +625,34 @@ def houseint_row(name, attrib):
 
 
 def UpdateTable(table, fil, engine=None):
-    global upd, pushed_rows, now_row
+    global upd, pushed_rows, now_row, now_row_, pbar
     if fil is None:
         return
     p = xml.parsers.expat.ParserCreate()
     now_row = 0
     now_row_ = 0
     logging.info("start import " + table)
+    if count_max:
+        p_widgets = ['Updating: ', progressbar.SimpleProgress(), ' ',
+             progressbar.Bar(marker=progressbar.RotatingMarker()),
+             ' ', progressbar.ETA()]
+        pbar = progressbar.ProgressBar(widgets=p_widgets,
+                                       maxval=count_max).start()
+    else:
+        p_widgets = ['Load/update: ',
+             progressbar.Bar(marker=progressbar.RotatingMarker()),
+             ' ', progressbar.ETA()]
+        pbar = progressbar.ProgressBar(widgets=p_widgets,
+                                       maxval=fil.size() + 1).start()
+
+        class PBReader(object):
+            def __init__(self, orig):
+                self.orig = orig
+
+            def read(self, n):
+                pbar.update(self.orig.tell())
+                return self.orig.read(n)
+        fil = PBReader(fil)
     if table == 'addrobj':
         if not upd:
             Addrobj.__table__.drop(engine)
@@ -584,17 +677,19 @@ def UpdateTable(table, fil, engine=None):
             HouseInt.__table__.create(engine)
         p.StartElementHandler = houseint_row
     p.ParseFile(fil)
-    AoGuidId.objcache = {}
-    AoGuidId.objcache_ = {}
+    AoGuidId.flush_cache()
     removed_hous = {}
     pushed_hous = {}
     session.commit()
     session.expunge_all()
+    pbar.finish()
     if (not upd) and (engine.name == 'postgresql'):
         logging.info("Index and cluster")
         if table == 'house':
             engine.execute("CREATE INDEX parent ON fias_house "
                            "USING btree (ao_id)")
+            engine.execute("CREATE INDEX idx_houseid ON fias_house "
+                           "USING btree (houseid)")
             engine.execute("CLUSTER fias_house USING parent")
         elif table == 'addrobj':
             engine.execute("CLUSTER fias_addr_obj "
@@ -604,8 +699,8 @@ def UpdateTable(table, fil, engine=None):
 
 import argparse
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(\
-                            description="Reader of FIAS into database")
+    parser = argparse.ArgumentParser(
+        description="Reader of FIAS into database")
     parser.add_argument("--fullfile")
     parser.add_argument("--forcenew", action='store_true')
     parser.add_argument("--fullver", type=int)
@@ -614,11 +709,7 @@ if __name__ == "__main__":
     engine = create_engine(al_dsn,
                            echo=False,
                            paramstyle='format',
-                           implicit_returning=False,
-                           #execution_options={'stream_results': True}
-                           #isolation_level='AUTOCOMMIT',
-                           #poolclass=NullPool,
-                           )
+                           implicit_returning=False)
     Session.configure(bind=engine)
     session = Session(expire_on_commit=False)
     if args.forcenew:
@@ -648,10 +739,22 @@ if __name__ == "__main__":
             minver = my.ver
     upd = True
     for ver in range(minver + 1, FiasFiles().maxver() + 1):
+        logging.info("Update " + str(ver) + " of " + str(FiasFiles().maxver()))
         for tabl in updating:
             my = sess.query(fias_db.TableStatus).\
                 filter_by(tablename=tabl).first()
             if my.ver < ver:
+                count_max = 0
+                count_tag = tag4tbl.get(tabl, None)
+                pre_list = []
+                if count_tag:
+                    if tabl == 'addrobj':
+                        pre_att = 'AOGUID'
+                    else:
+                        pre_att = ''
+                    p = xml.parsers.expat.ParserCreate()
+                    p.StartElementHandler = count_row
+                    p.ParseFile(FiasFiles().get_updfile(tabl, ver))
                 UpdateTable(tabl, FiasFiles().get_updfile(tabl, ver))
                 my.ver = ver
                 sess.commit()
