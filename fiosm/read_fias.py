@@ -19,6 +19,8 @@ from sqlalchemy.sql.functions import func
 import progressbar
 
 
+#urllib._urlopener = urllib.FancyURLopener(
+#    proxies={'http': 'http://192.168.67.252:3128'})
 pbar = None
 
 
@@ -108,7 +110,7 @@ class AsyncRarCli(io.IOBase):
         res = self.buf[:n]
         self.buf = self.buf[n:]
         self.passed += len(res)
-        return res
+        return bytes(res)
 
     def tell(self):
         return self.passed
@@ -225,7 +227,8 @@ class FiasFiles(object):
                     rec.date = strpdate(filename.split("_")[3], "%Y%m%d")
                 except:
                     pass
-                return arch.open(filename)
+                return AsyncRarCli(self.upd_files[ver], filename)
+                #return arch.open(filename)
 
     def __del__(self):
         urllib.urlcleanup()
@@ -449,6 +452,7 @@ removed_hous = {}
 # Keys are guids, values are records
 pushed_hous = {}
 broken_house = frozenset((UUID('ea1e5154-7588-4220-8691-6b63bb93c3d4').int,
+                         (UUID('feed6431-5e39-4ba0-9ecf-02f1ec55910e').int,
                           ))
 
 
@@ -703,6 +707,7 @@ if __name__ == "__main__":
         description="Reader of FIAS into database")
     parser.add_argument("--fullfile")
     parser.add_argument("--forcenew", action='store_true')
+    parser.add_argument("--onlyfull", action='store_true')
     parser.add_argument("--fullver", type=int)
     args = parser.parse_args()
     from config import al_dsn
@@ -737,24 +742,25 @@ if __name__ == "__main__":
 
         if my != None and (minver == None or minver > my.ver):
             minver = my.ver
-    upd = True
-    for ver in range(minver + 1, FiasFiles().maxver() + 1):
-        logging.info("Update " + str(ver) + " of " + str(FiasFiles().maxver()))
-        for tabl in updating:
-            my = sess.query(fias_db.TableStatus).\
-                filter_by(tablename=tabl).first()
-            if my.ver < ver:
-                count_max = 0
-                count_tag = tag4tbl.get(tabl, None)
-                pre_list = []
-                if count_tag:
-                    if tabl == 'addrobj':
-                        pre_att = 'AOGUID'
-                    else:
-                        pre_att = ''
-                    p = xml.parsers.expat.ParserCreate()
-                    p.StartElementHandler = count_row
-                    p.ParseFile(FiasFiles().get_updfile(tabl, ver))
-                UpdateTable(tabl, FiasFiles().get_updfile(tabl, ver))
-                my.ver = ver
-                sess.commit()
+    if not args.onlyfull:
+        upd = True
+        for ver in range(minver + 1, FiasFiles().maxver() + 1):
+            logging.info("Update " + str(ver) + " of " + str(FiasFiles().maxver()))
+            for tabl in updating:
+                my = sess.query(fias_db.TableStatus).\
+                    filter_by(tablename=tabl).first()
+                if my.ver < ver:
+                    count_max = 0
+                    count_tag = tag4tbl.get(tabl, None)
+                    pre_list = []
+                    if count_tag:
+                        if tabl == 'addrobj':
+                            pre_att = 'AOGUID'
+                        else:
+                            pre_att = ''
+                        p = xml.parsers.expat.ParserCreate()
+                        p.StartElementHandler = count_row
+                        p.ParseFile(FiasFiles().get_updfile(tabl, ver))
+                    UpdateTable(tabl, FiasFiles().get_updfile(tabl, ver))
+                    my.ver = ver
+                    sess.commit()
