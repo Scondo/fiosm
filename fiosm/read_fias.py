@@ -452,7 +452,7 @@ removed_hous = {}
 # Keys are guids, values are records
 pushed_hous = {}
 broken_house = frozenset((UUID('ea1e5154-7588-4220-8691-6b63bb93c3d4').int,
-                         (UUID('feed6431-5e39-4ba0-9ecf-02f1ec55910e').int,
+                          UUID('feed6431-5e39-4ba0-9ecf-02f1ec55910e').int,
                           ))
 
 
