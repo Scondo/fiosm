@@ -9,6 +9,7 @@ import urllib
 from urllib import urlretrieve
 from urllib2 import URLError
 from os.path import exists
+from os import remove
 import rarfile
 import fias_db
 from fias_db import House, HouseInt, Addrobj, Normdoc
@@ -22,6 +23,7 @@ import progressbar
 #urllib._urlopener = urllib.FancyURLopener(
 #    proxies={'http': 'http://192.168.67.252:3128'})
 pbar = None
+syncrar = False
 
 
 def loadProgress(bl, blsize, size):
@@ -187,9 +189,13 @@ class FiasFiles(object):
             pbar.finish()
             try:
                 arch = rarfile.RarFile(self.full_file)
+                logging.info('Testing full file...')
                 arch.testrar()
             except rarfile.Error:
                 # Try get previous version
+                logging.warn('Full file version ' + str(ver) + ' is broken')
+                os.remove(self.full_file)
+                logging.warn('Trying full file version ' + str(ver - 1))
                 self.get_fullarch(ver - 1)
 
     def get_fullfile(self, table):
@@ -208,14 +214,15 @@ class FiasFiles(object):
                 else:
                     try:
                         rec = session.query(fias_db.Versions).\
-                                        get(self.full_ver)
+                            get(self.full_ver)
                         rec.date = fdate
                     except:
                         pass
-                filo = AsyncRarCli(self.full_file, filename)
-                #filo = io.BufferedReader(filo, 10240)
-                #return (arch.open(filename), self.full_ver)
-                return (filo, self.full_ver)
+                if syncrar:
+                    return (arch.open(filename), self.full_ver)
+                else:
+                    filo = AsyncRarCli(self.full_file, filename)
+                    return (filo, self.full_ver)
 
     def get_updfile(self, table, ver):
         global pbar
@@ -235,8 +242,10 @@ class FiasFiles(object):
                     rec.date = strpdate(filename.split("_")[3], "%Y%m%d")
                 except:
                     pass
-                return AsyncRarCli(self.upd_files[ver], filename)
-                #return arch.open(filename)
+                if syncrar:
+                    return arch.open(filename)
+                else:
+                    return AsyncRarCli(self.upd_files[ver], filename)
 
     def __del__(self):
         urllib.urlcleanup()
@@ -709,16 +718,18 @@ def UpdateTable(table, fil, engine=None):
     logging.info(table + " imported")
 
 
-import argparse
 if __name__ == "__main__":
+    import argparse
     parser = argparse.ArgumentParser(
         description="Reader of FIAS into database")
     parser.add_argument("--fullfile")
     parser.add_argument("--forcenew", action='store_true')
     parser.add_argument("--onlyfull", action='store_true')
     parser.add_argument("--fullver", type=int)
+    parser.add_argument("--syncrar", action='store_true')
     args = parser.parse_args()
-    from config import al_dsn
+    syncrar = args.syncrar
+    from config import al_dsn, use_osm
     engine = create_engine(al_dsn,
                            echo=False,
                            paramstyle='format',
@@ -739,17 +750,32 @@ if __name__ == "__main__":
     minver = None
     for tabl in updating:
         my = sess.query(fias_db.TableStatus).filter_by(tablename=tabl).first()
-        if my == None:
+        if my is None:  # Load table is absent
             full = FiasFiles().get_fullfile(tabl)
-            if full != None:
+            if use_osm:
+                # Clean dependency
+                try:
+                    if tabl == "addrobj":
+                        engine.execute("DROP TABLE public.fiosm_stat")
+                        engine.execute("DROP TABLE "
+                                       "public.planet_osm_fias_place")
+                        engine.execute("DROP TABLE "
+                                       "public.planet_osm_fias_street")
+                    elif tabl == "house" or tabl == "houseint":
+                        engine.execute("DROP TABLE "
+                                       "public.planet_osm_fias_build")
+                except:
+                    pass
+            if full is not None:
                 upd = False
                 UpdateTable(tabl, full[0], engine)
                 my = fias_db.TableStatus(tabl, full[1])
                 sess.add(my)
                 sess.commit()
-
-        if my != None and (minver == None or minver > my.ver):
+        # Load or was present before - determine min ver for futher update
+        if my is not None and (minver is None or minver > my.ver):
             minver = my.ver
+
     if not args.onlyfull:
         upd = True
         for ver in range(minver + 1, FiasFiles().maxver() + 1):
