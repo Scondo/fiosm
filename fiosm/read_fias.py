@@ -194,7 +194,7 @@ class FiasFiles(object):
             except rarfile.Error:
                 # Try get previous version
                 logging.warn('Full file version ' + str(ver) + ' is broken')
-                os.remove(self.full_file)
+                remove(self.full_file)
                 logging.warn('Trying full file version ' + str(ver - 1))
                 self.get_fullarch(ver - 1)
 
