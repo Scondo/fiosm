@@ -173,16 +173,24 @@ class FiasFiles(object):
         else:
             return 0
 
-    def get_fullarch(self):
+    def get_fullarch(self, ver=None):
+        if ver is None:
+            ver = self.maxver()
         global pbar
         if self.full_file is None or not exists(self.full_file):
             pbar = progressbar.ProgressBar(widgets=['Download: ',
                 progressbar.Bar(), ' ', progressbar.ETA()], maxval=1.0).start()
             self.full_file = urlretrieve(
-                self.fias_list[self.maxver()].FiasCompleteXmlUrl,
+                self.fias_list[ver].FiasCompleteXmlUrl,
                 self.full_file, reporthook=loadProgress)[0]
-            self.full_ver = self.maxver()
+            self.full_ver = ver
             pbar.finish()
+            try:
+                arch = rarfile.RarFile(self.full_file)
+                arch.testrar()
+            except rarfile.Error:
+                # Try get previous version
+                self.get_fullarch(ver - 1)
 
     def get_fullfile(self, table):
         self.get_fullarch()
