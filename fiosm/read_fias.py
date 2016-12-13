@@ -464,8 +464,8 @@ def addr_obj_row(name, attrib):
             AoGuidId.flush_cache()
             session.flush()
 
-# Keys are guids, values are update dates
-removed_hous = {}
+# Keys are guid integers, values are update dates ordinal
+passed_houses = {}
 # Keys are guids, values are records
 pushed_hous = {}
 broken_house = frozenset((UUID('ea1e5154-7588-4220-8691-6b63bb93c3d4').int,
@@ -475,9 +475,31 @@ broken_house = frozenset((UUID('ea1e5154-7588-4220-8691-6b63bb93c3d4').int,
                           ))
 
 
-def house_row(name, attrib):
-    global upd, now_row, now_row_, pushed_hous, removed_hous
+def is_h_better(rec, attrib, sdate, edate, udate):
+    if rec.updatedate < udate:
+        return True
+    elif rec.updatedate > udate:
+        return False
 
+    if rec.startdate < sdate:
+        return True
+    elif rec.startdate > sdate:
+        return False
+
+    if rec.enddate < edate:
+            return True
+    elif rec.endtdate > edate:
+            return False
+
+    if rec.divtype == 0 and attrib.get('DIVTYPE', '0') != '0':
+            return True
+    elif rec.divtype != 0 and attrib.get('DIVTYPE', '0') == '0':
+            return False
+    return True
+
+
+def house_row(name, attrib):
+    global upd, now_row, now_row_, pushed_hous, passed_houses
     if name == 'House':
         now_row_ += 1
         if now_row_ == 250000:
@@ -495,28 +517,29 @@ def house_row(name, attrib):
 
         del attrib['COUNTER']
         ed = attrib.pop('ENDDATE').split('-')
-        enddate = date(int(ed[0]), int(ed[1]), int(ed[2]))
+        enddate = date(*[int(it) for it in ed])
         sd = attrib.pop('STARTDATE').split('-')
         startdate = date(int(sd[0]), int(sd[1]), int(sd[2]))
         ud = attrib.pop('UPDATEDATE').split('-')
         updatedate = date(int(ud[0]), int(ud[1]), int(ud[2]))
+        updatedateo = updatedate.toordinal()
         guid = UUID(attrib.pop("HOUSEGUID"))
         guid_i = guid.int
+        if passed_houses.get(guid_i, 0) > updatedateo:
+            return
+        elif passed_houses.get(guid_i, 0) == updatedateo:
+            strange = True
+        strange = strange or startdate >= enddate
         rec = pushed_hous.get(guid_i, None)
-        strange = startdate >= enddate
         if (not strange) and (enddate < today) and\
                 (rec is None or rec.updatedate <= updatedate):
-            removed_hous[guid_i] = updatedate
+            # remove is kind of pass
+            passed_houses[guid_i] = updatedateo
             if rec is not None:
                 pushed_hous.pop(guid_i)
                 session.flush() #!!!
                 session.delete(rec)
             return
-        if guid_i in removed_hous:
-            if updatedate <= removed_hous[guid_i]:
-                return
-            else:
-                removed_hous.pop(guid_i)
 
         normdoc = attrib.pop('NORMDOC', None)
         attrib['ao_id'] = AoGuidId.getid(attrib.pop('AOGUID'), False)
@@ -534,9 +557,7 @@ def house_row(name, attrib):
             rec.houseguid = guid
             session.add(rec)
         else:
-            if updatedate > rec.updatedate or\
-                    (updatedate == rec.updatedate) and (enddate > rec.enddate):
-                attrib.setdefault('IFNSFL', None)
+            if is_h_better(rec, attrib, startdate, enddate, updatedate):
                 attrib.setdefault('TERRIFNSFL', None)
                 attrib.setdefault('IFNSUL', None)
                 attrib.setdefault('TERRIFNSUL', None)
@@ -556,23 +577,17 @@ def house_row(name, attrib):
         rec.updatedate = updatedate
         if normdoc:
             rec.normdoc = UUID(normdoc)
-
-        if (startdate >= today) or strange or (guid_i in broken_house):
+        passed_houses[guid_i] = updatedateo
+        if strange or (guid_i in broken_house):
             pushed_hous[guid_i] = rec
         else:
             pushed_hous.pop(guid_i, None)
 
 
 def houseint_row(name, attrib):
-    global upd, now_row, now_row_, pushed_hous, removed_hous
+    global upd, pushed_hous, passed_houses
 
     if name == 'HouseInterval':
-        now_row_ += 1
-        if now_row_ == 250000:
-            now_row = now_row + now_row_
-            now_row_ = 0
-            logging.info((now_row, len(pushed_hous), len(removed_hous)))
-            session.flush()
         if upd:
             session.query(HouseInt).filter_by(
                 houseintid=attrib['HOUSEINTID']).delete()
@@ -584,23 +599,24 @@ def houseint_row(name, attrib):
         startdate = date(int(sd[0]), int(sd[1]), int(sd[2]))
         ud = attrib.pop('UPDATEDATE').split('-')
         updatedate = date(int(ud[0]), int(ud[1]), int(ud[2]))
+        updatedateo = updatedate.toordinal()
         guid = UUID(attrib.pop("INTGUID"))
         guid_i = guid.int
+        if passed_houses.get(guid_i, 0) > updatedateo:
+            return
+        elif passed_houses.get(guid_i, 0) == updatedateo:
+            strange = True
+        strange = strange or (startdate >= enddate)
         rec = pushed_hous.get(guid_i, None)
-        strange = startdate >= enddate
+
         if (not strange) and (enddate < today) and\
                 (rec is None or rec.updatedate <= updatedate):
-            removed_hous[guid_i] = updatedate
             if rec is not None:
                 session.flush()
                 pushed_hous.pop(guid_i)
+                session.flush()
                 session.delete(rec)
             return
-        if guid_i in removed_hous:
-            if updatedate <= removed_hous[guid_i]:
-                return
-            else:
-                removed_hous.pop(guid_i)
 
         normdoc = attrib.pop('NORMDOC', None)
         attrib['ao_id'] = AoGuidId.getid(attrib.pop('AOGUID'), False)
@@ -618,8 +634,8 @@ def houseint_row(name, attrib):
             rec.intguid = guid
             session.add(rec)
         else:
-            if updatedate > rec.updatedate or\
-                    (updatedate == rec.updatedate) and (enddate > rec.enddate):
+            if is_h_better(rec, attrib,
+                           startdate, enddate, updatedate):
                 attrib.setdefault('IFNSFL', None)
                 attrib.setdefault('TERRIFNSFL', None)
                 attrib.setdefault('IFNSUL', None)
@@ -640,8 +656,8 @@ def houseint_row(name, attrib):
         rec.updatedate = updatedate
         if normdoc:
             rec.normdoc = UUID(normdoc)
-
-        if (startdate >= today) or strange:
+        passed_houses[guid_i] = updatedateo
+        if strange:
             pushed_hous[guid_i] = rec
         else:
             pushed_hous.pop(guid_i, None)
