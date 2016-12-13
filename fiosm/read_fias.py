@@ -471,6 +471,7 @@ pushed_hous = {}
 broken_house = frozenset((UUID('ea1e5154-7588-4220-8691-6b63bb93c3d4').int,
                           UUID('feed6431-5e39-4ba0-9ecf-02f1ec55910e').int,
                           UUID('f477c26f-2d14-468f-b3f0-f7399a3c2de5').int,
+                          UUID('2831d031-8ea7-4ff1-82df-50693cc94320').int,
                           ))
 
 
