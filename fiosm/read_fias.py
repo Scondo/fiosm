@@ -527,8 +527,8 @@ def house_row(name, attrib):
         guid_i = guid.int
         if passed_houses.get(guid_i, 0) > updatedateo:
             return
-        elif passed_houses.get(guid_i, 0) == updatedateo:
-            strange = True
+        else:
+            strange = passed_houses.get(guid_i, 0) == updatedateo
         strange = strange or startdate >= enddate
         rec = pushed_hous.get(guid_i, None)
         if (not strange) and (enddate < today) and\
@@ -604,8 +604,8 @@ def houseint_row(name, attrib):
         guid_i = guid.int
         if passed_houses.get(guid_i, 0) > updatedateo:
             return
-        elif passed_houses.get(guid_i, 0) == updatedateo:
-            strange = True
+        else:
+            strange = passed_houses.get(guid_i, 0) == updatedateo
         strange = strange or (startdate >= enddate)
         rec = pushed_hous.get(guid_i, None)
 
