@@ -472,6 +472,7 @@ broken_house = frozenset((UUID('ea1e5154-7588-4220-8691-6b63bb93c3d4').int,
                           UUID('feed6431-5e39-4ba0-9ecf-02f1ec55910e').int,
                           UUID('f477c26f-2d14-468f-b3f0-f7399a3c2de5').int,
                           UUID('2831d031-8ea7-4ff1-82df-50693cc94320').int,
+                          UUID('9002160a-2cf9-4574-9988-b6c840d3fab2').int,
                           ))
 
 
@@ -528,7 +529,7 @@ def house_row(name, attrib):
         if passed_houses.get(guid_i, 0) > updatedateo:
             return
         else:
-            strange = passed_houses.get(guid_i, 0) == updatedateo
+            strange = (passed_houses.get(guid_i, 0) == updatedateo)
         strange = strange or startdate >= enddate
         rec = pushed_hous.get(guid_i, None)
         if (not strange) and (enddate < today) and\
@@ -546,7 +547,8 @@ def house_row(name, attrib):
         if attrib['ao_id'] is None:
             return
 
-        if (strange or (startdate >= today) or upd) and (rec is None):
+        if (strange or (startdate >= today) or upd or
+                (guid_i in passed_houses)) and (rec is None):
             # If house is 'future' check if that already in DB
             # Other houses should not be in DB:
             # 'past' houses are skipped and current is only one
@@ -605,7 +607,7 @@ def houseint_row(name, attrib):
         if passed_houses.get(guid_i, 0) > updatedateo:
             return
         else:
-            strange = passed_houses.get(guid_i, 0) == updatedateo
+            strange = (passed_houses.get(guid_i, 0) == updatedateo)
         strange = strange or (startdate >= enddate)
         rec = pushed_hous.get(guid_i, None)
 
@@ -623,7 +625,8 @@ def houseint_row(name, attrib):
         if attrib['ao_id'] is None:
             return
 
-        if (strange or (startdate >= today) or upd) and (rec is None):
+        if (strange or (startdate >= today) or upd or
+                (guid_i in passed_houses)) and (rec is None):
             # If house is 'future' check if that already in DB
             # Other houses should not be in DB:
             # 'past' houses are skipped and current is only one
