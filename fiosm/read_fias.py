@@ -488,7 +488,7 @@ def is_h_better(rec, attrib, sdate, edate, udate):
 
     if rec.enddate < edate:
             return True
-    elif rec.endtdate > edate:
+    elif rec.enddate > edate:
             return False
 
     if rec.divtype == 0 and attrib.get('DIVTYPE', '0') != '0':
