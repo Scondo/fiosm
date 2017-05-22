@@ -11,12 +11,13 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import deferred, relationship
 from sqlalchemy.orm import object_mapper
 from datetime import date
-Base = declarative_base()
-
 
 from sqlalchemy.types import TypeDecorator, CHAR
 from sqlalchemy.dialects.postgresql import UUID as pg_UUID
 import uuid
+
+
+Base = declarative_base()
 
 
 class GUID(TypeDecorator):
@@ -53,7 +54,7 @@ class GUID(TypeDecorator):
 
 class FiasRow(object):
     def fromdic(self, dic):
-        for it in dic.iteritems():
+        for it in dic.items():
             setattr(self, it[0].lower(), it[1])
 
     def __init__(self, dic=None):
@@ -165,12 +166,13 @@ class HouseInt(FiasRow, Base):
     intstart = Column(Integer, index=False)
     intend = Column(Integer, index=False)
     intstatus = Column(SmallInteger)
+    counter = deferred(Column(Integer))
 
 
 class House(FiasRow, Base):
     __tablename__ = 'fias_house'
-    houseguid = Column(GUID, primary_key=True)
-    houseid = Column(GUID)
+    houseguid = Column(GUID, primary_key=False)
+    houseid = Column(GUID, primary_key=True)
     startdate = Column(Date, default=date(1900, 1, 1))
     enddate = Column(Date, default=date(2100, 1, 1))
 
@@ -193,6 +195,7 @@ class House(FiasRow, Base):
     cadnum = deferred(Column(String(100)))
     divtype = Column(SmallInteger, default=0)
     normdoc = deferred(Column(GUID))
+    counter = deferred(Column(Integer))
 
     def makeonestr(self, space=u' '):
         _str = u''

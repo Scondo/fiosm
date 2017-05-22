@@ -5,9 +5,17 @@ import xml.parsers.expat
 import datetime
 from datetime import date
 import logging
-import urllib
-from urllib import urlretrieve
-from urllib2 import URLError
+from sqlalchemy.orm.persistence import BulkUpdateFetch
+try:
+    from urllib import urlretrieve
+    from urllib import urlcleanup
+except:
+    from urllib.request import urlretrieve
+    from urllib.request import urlcleanup
+try:
+    from urllib2 import URLError
+except:
+    from urllib.error import URLError
 from os.path import exists
 from os import remove
 import rarfile
@@ -17,7 +25,14 @@ from uuid import UUID
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.functions import func
+from sqlalchemy.sql.expression import bindparam
 import progressbar
+try:
+    long
+    basestring
+except NameError:
+    long = int
+    basestring = str
 
 
 #urllib._urlopener = urllib.FancyURLopener(
@@ -65,24 +80,28 @@ DefaultDialect.do_executemany = do_executemany_patched
 
 import multiprocessing
 import io
+try:
+    ctx = multiprocessing.get_context('spawn')
+except:
+    ctx = multiprocessing
 
 
 class AsyncRarServ(multiprocessing.Process):
     def __init__(self, *args, **kwargs):
         self.src = kwargs.pop('src')
         self.filename = kwargs.pop('filename')
-        multiprocessing.Process.__init__(self, *args, **kwargs)
-        self.queue = multiprocessing.Queue(10)
-        self.fin = multiprocessing.Event()
-        self.go = multiprocessing.Event()
-        self.size = multiprocessing.queues.SimpleQueue()
+        ctx.Process.__init__(self, *args, **kwargs)
+        self.queue = ctx.Queue(10)
+        self.fin = ctx.Event()
+        self.go = ctx.Event()
+        self.size = ctx.SimpleQueue()
 
     def run(self):
         rar = rarfile.RarFile(self.src)
         rared = rar.open(self.filename)
-        self.size.put(rared.inf.file_size)
+        self.size.put(rared._inf.file_size)
         self.go.set()
-        while rared.remain > 0:
+        while rared._remain > 0:
             line = rared.read(102400)
             self.queue.put(line)
         self.fin.set()
@@ -171,7 +190,7 @@ class FiasFiles(object):
 
     def maxver(self):
         if self.fias_list:
-            return max(self.fias_list.iterkeys())
+            return max(self.fias_list.keys())
         else:
             return 0
 
@@ -248,7 +267,7 @@ class FiasFiles(object):
                     return AsyncRarCli(self.upd_files[ver], filename)
 
     def __del__(self):
-        urllib.urlcleanup()
+        urlcleanup()
 
 
 class GuidId(object):
@@ -363,8 +382,8 @@ class GuidId(object):
         try:
             session.flush()
         except:
-            print sorted(dic.items())
-            print sorted(idO.asdic().items())
+            print(sorted(dic.items()))
+            print(sorted(idO.asdic().items()))
             raise
 
 
@@ -391,6 +410,7 @@ pre_att = ''
 tag4tbl = {'addrobj': 'Object',
            'house': 'House',
            'normdoc': 'NormativeDocument'}
+bulk = []
 
 
 def count_row(name, attrib):
@@ -401,24 +421,52 @@ def count_row(name, attrib):
             pre_list.append(attrib.get(pre_att, None))
 
 
+def generate_bind_ins(table, n):
+    stmnt = table.insert()
+    items = []
+    for i in range(n):
+        item = []
+        for c in table.c:
+            item.append(bindparam('_' + str(i + 1) + c.key))
+        items.append(item)
+    stmnt = stmnt.values(items)
+    return stmnt
+
+
+# nd_ins = generate_bind_ins(Normdoc.__table__, 1000)
+
+
 def normdoc_row(name, attrib):
-    global upd, now_row, now_row_
+    global now_row, now_row_, bulk
     if name == "NormativeDocument":
         now_row_ += 1
-        if now_row_ == 100000:
-            now_row = now_row + now_row_
-            now_row_ = 0
-            # logging.info(now_row)
+        attrib['normdocid'] = UUID(int=long(attrib.pop('NORMDOCID').
+                                            replace('-', ''), 16))
+        docdate = attrib.pop('DOCDATE', None)
+        rec = dict([(it[0].lower(), it[1]) for it in attrib.items()])
+        if docdate:
+            rec['docdate'] = date(*[int(it) for it in docdate.split('-')])
+        else:
+            rec['docdate'] = None
+        for key in ('docname', 'docnum', 'doctype', 'docimgid'):
+            rec.setdefault(key, None)
+        # rec = Normdoc(rec)
+        bulk.append(rec)
+    if now_row_ == 10000 or name is None:
+        now_row = now_row + now_row_
+        now_row_ = 0
+        session.execute(Normdoc.__table__.insert(), bulk)
+        bulk = []
+
+
+def normdoc_row_upd(name, attrib):
+    if name == "NormativeDocument":
+        pbar.update(now_row + now_row_)
+        old_doc = session.query(Normdoc).get(attrib['NORMDOCID'])
+        if old_doc:  # May be update will be better???
+            session.delete(old_doc)
             session.flush()
-        attrib['normdocid'] = UUID(attrib.pop('NORMDOCID'))
-        if upd:
-            pbar.update(now_row + now_row_)
-            old_doc = session.query(Normdoc).get(attrib['normdocid'])
-            if old_doc:  # May be update will be better???
-                session.delete(old_doc)
-                session.flush()
-        rec = Normdoc(attrib)
-        session.add(rec)
+    normdoc_row(name, attrib)
 
 
 def socr_obj_row(name, attrib):
@@ -444,14 +492,16 @@ def addr_obj_row(name, attrib):
             return
 
         if 'NORMDOC' in attrib:
-            attrib['NORMDOC'] = UUID(attrib['NORMDOC'])
-        d = attrib.pop('ENDDATE').split('-')
-        attrib['ENDDATE'] = date(int(d[0]), int(d[1]), int(d[2]))
-        d = attrib.pop('STARTDATE').split('-')
-        attrib['STARTDATE'] = date(int(d[0]), int(d[1]), int(d[2]))
-        d = attrib.pop('UPDATEDATE').split('-')
-        attrib['UPDATEDATE'] = date(int(d[0]), int(d[1]), int(d[2]))
-        attrib['aoguid'] = UUID(attrib.pop('AOGUID'))
+            attrib['NORMDOC'] = UUID(int=long(attrib.pop('NORMDOC').
+                                              replace('-', ''), 16))
+        attrib['ENDDATE'] = date(*[int(it) for it in attrib.
+                                   pop('ENDDATE').split('-')])
+        attrib['STARTDATE'] = date(*[int(it) for it in attrib.
+                                   pop('STARTDATE').split('-')])
+        attrib['UPDATEDATE'] = date(*[int(it) for it in attrib.
+                                    pop('UPDATEDATE').split('-')])
+        attrib['aoguid'] = UUID(int=long(attrib.pop('AOGUID').
+                                        replace('-', ''), 16))
         attrib['parentid'] = AoGuidId.getid(attrib.pop('PARENTGUID', None))
 
         AoGuidId.pushrec(attrib, comp=addr_cmp)
@@ -468,13 +518,8 @@ def addr_obj_row(name, attrib):
 passed_houses = {}
 # Keys are guids, values are records
 pushed_hous = {}
-broken_house = frozenset((UUID('ea1e5154-7588-4220-8691-6b63bb93c3d4').int,
-                          UUID('feed6431-5e39-4ba0-9ecf-02f1ec55910e').int,
-                          UUID('f477c26f-2d14-468f-b3f0-f7399a3c2de5').int,
-                          UUID('2831d031-8ea7-4ff1-82df-50693cc94320').int,
-                          UUID('9002160a-2cf9-4574-9988-b6c840d3fab2').int,
-                          ))
 
+house_cols = list(House().collist())
 
 def is_h_better(rec, attrib, sdate, edate, udate):
     if rec.updatedate < udate:
@@ -500,14 +545,16 @@ def is_h_better(rec, attrib, sdate, edate, udate):
 
 
 def house_row(name, attrib):
-    global upd, now_row, now_row_, pushed_hous, passed_houses
+    global upd, now_row, now_row_, bulk
+    if now_row_ == 10000 or name is None:
+        now_row = now_row + now_row_
+        now_row_ = 0
+        session.execute(House.__table__.insert(), bulk)
+        bulk = []
+
     if name == 'House':
         now_row_ += 1
-        if now_row_ == 250000:
-            now_row = now_row + now_row_
-            now_row_ = 0
-            # logging.info((now_row, len(pushed_hous) len(removed_hous)))
-            session.flush()
+        attrib['HOUSEID'] = UUID(attrib.pop('HOUSEID'))
         if upd:
             pbar.update(now_row + now_row_)
             old_h = session.query(House).\
@@ -516,74 +563,37 @@ def house_row(name, attrib):
                 session.delete(old_h)
                 session.flush()
 
-        del attrib['COUNTER']
-        ed = attrib.pop('ENDDATE').split('-')
-        enddate = date(*[int(it) for it in ed])
-        sd = attrib.pop('STARTDATE').split('-')
-        startdate = date(int(sd[0]), int(sd[1]), int(sd[2]))
-        ud = attrib.pop('UPDATEDATE').split('-')
-        updatedate = date(int(ud[0]), int(ud[1]), int(ud[2]))
-        updatedateo = updatedate.toordinal()
-        guid = UUID(attrib.pop("HOUSEGUID"))
-        guid_i = guid.int
-        if passed_houses.get(guid_i, 0) > updatedateo:
-            return
-        else:
-            strange = (passed_houses.get(guid_i, 0) == updatedateo)
-        strange = strange or startdate >= enddate
-        rec = pushed_hous.get(guid_i, None)
-        if (not strange) and (enddate < today) and\
-                (rec is None or rec.updatedate <= updatedate):
-            # remove is kind of pass
-            passed_houses[guid_i] = updatedateo
-            if rec is not None:
-                pushed_hous.pop(guid_i)
-                session.flush() #!!!
-                session.delete(rec)
-            return
-
+        enddate = date(*[int(it)
+                         for it in attrib.pop('ENDDATE').split('-')])
+        startdate = date(*[int(it)
+                           for it in attrib.pop('STARTDATE').split('-')])
+        updatedate = date(*[int(it)
+                            for it in attrib.pop('UPDATEDATE').split('-')])
         normdoc = attrib.pop('NORMDOC', None)
-        attrib['ao_id'] = AoGuidId.getid(attrib.pop('AOGUID'), False)
+        attrib['ao_id'] = AoGuidId.getid(long(attrib.pop('AOGUID').
+                                              replace('-', ''), 16), False)
+        strange = startdate >= enddate
+        if (not strange) and (enddate < today):
+            # Obviously obsolete data
+            return
         if attrib['ao_id'] is None:
             return
 
-        if (strange or (startdate >= today) or upd or
-                (guid_i in passed_houses)) and (rec is None):
-            # If house is 'future' check if that already in DB
-            # Other houses should not be in DB:
-            # 'past' houses are skipped and current is only one
-            rec = session.query(House).get(guid)
+        houseguid = UUID(attrib.pop('HOUSEGUID'))
 
-        if rec is None:
-            rec = fias_db.House(attrib)
-            rec.houseguid = guid
-            session.add(rec)
-        else:
-            if is_h_better(rec, attrib, startdate, enddate, updatedate):
-                attrib.setdefault('TERRIFNSFL', None)
-                attrib.setdefault('IFNSUL', None)
-                attrib.setdefault('TERRIFNSUL', None)
-
-                attrib.setdefault('POSTALCODE', None)
-                attrib.setdefault('OKTMO', None)
-                attrib.setdefault('OKATO', None)
-
-                attrib.setdefault('HOUSENUM', None)
-                attrib.setdefault('BUILDNUM', None)
-                attrib.setdefault('STRUCNUM', None)
-                rec.fromdic(attrib)
-            else:
-                return
-        rec.enddate = enddate
-        rec.startdate = startdate
-        rec.updatedate = updatedate
+        rec = dict([(it[0].lower(), it[1]) for it in attrib.items()])
         if normdoc:
-            rec.normdoc = UUID(normdoc)
-        passed_houses[guid_i] = updatedateo
-        if strange or (guid_i in broken_house):
-            pushed_hous[guid_i] = rec
+            rec['normdoc'] = UUID(normdoc)
         else:
-            pushed_hous.pop(guid_i, None)
+            rec['normdoc'] = None
+        rec['enddate'] = enddate
+        rec['startdate'] = startdate
+        rec['updatedate'] = updatedate
+        rec['houseguid'] = houseguid
+
+        for key in house_cols:
+            rec.setdefault(key, None)
+        bulk.append(rec)
 
 
 def houseint_row(name, attrib):
@@ -594,7 +604,6 @@ def houseint_row(name, attrib):
             session.query(HouseInt).filter_by(
                 houseintid=attrib['HOUSEINTID']).delete()
 
-        del attrib['COUNTER']
         ed = attrib.pop('ENDDATE').split('-')
         enddate = date(int(ed[0]), int(ed[1]), int(ed[2]))
         sd = attrib.pop('STARTDATE').split('-')
@@ -621,7 +630,8 @@ def houseint_row(name, attrib):
             return
 
         normdoc = attrib.pop('NORMDOC', None)
-        attrib['ao_id'] = AoGuidId.getid(attrib.pop('AOGUID'), False)
+        attrib['ao_id'] = AoGuidId.getid(long(attrib.pop('AOGUID').
+                                              replace('-', ''), 16), False)
         if attrib['ao_id'] is None:
             return
 
@@ -676,16 +686,18 @@ def UpdateTable(table, fil, engine=None):
     logging.info("start import " + table)
     if count_max:
         p_widgets = ['Updating: ', progressbar.SimpleProgress(), ' ',
-             progressbar.Bar(marker=progressbar.RotatingMarker()),
-             ' ', progressbar.ETA()]
+             progressbar.Bar(), ' ', progressbar.ETA()]
         pbar = progressbar.ProgressBar(widgets=p_widgets,
                                        maxval=count_max).start()
     else:
-        p_widgets = ['Load/update: ',
-             progressbar.Bar(marker=progressbar.RotatingMarker()),
-             ' ', progressbar.ETA()]
+        p_widgets = ['Load/update: ', progressbar.RotatingMarker(), ' ',
+             progressbar.Bar(), ' ', progressbar.ETA()]
+        if syncrar:
+            file_size = fil._inf.file_size
+        else:
+            file_size = fil.size()
         pbar = progressbar.ProgressBar(widgets=p_widgets,
-                                       maxval=fil.size() + 1).start()
+                                       maxval=file_size + 1).start()
 
         class PBReader(object):
             def __init__(self, orig):
@@ -707,7 +719,9 @@ def UpdateTable(table, fil, engine=None):
         if not upd:
             Normdoc.__table__.drop(engine)
             Normdoc.__table__.create(engine)
-        p.StartElementHandler = normdoc_row
+            p.StartElementHandler = normdoc_row
+        else:
+            p.StartElementHandler = normdoc_row_upd
     elif table == 'house':
         if not upd:
             House.__table__.drop(engine)
@@ -720,8 +734,8 @@ def UpdateTable(table, fil, engine=None):
         p.StartElementHandler = houseint_row
     p.ParseFile(fil)
     AoGuidId.flush_cache()
-    removed_hous = {}
     pushed_hous = {}
+    p.StartElementHandler(None, None)
     session.commit()
     session.expunge_all()
     pbar.finish()

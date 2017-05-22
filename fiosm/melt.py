@@ -327,11 +327,37 @@ class fias_AO(object):
         return (self.fias != None) or (self.guid == None)
 
     def subB(self, typ):
+        def only_best(bld_list):
+            done = set()
+            for one in bld_list:
+                if one.houseguid in done:
+                    continue
+                like_me = filter(lambda it: it.houseguid == one.houseguid,
+                                 bld_list)
+                if len(like_me) == 1:
+                    yield one
+                else:
+                    for fiFunc in (lambda it: it.updatedate >= one.updatedate,
+                                   lambda it: it.startdate >= one.startdate,
+                                   lambda it: it.enddate >= one.enddate,
+                                   lambda it: it.divtype >= one.divtype,
+                                   ):
+                        like_me = filter(fiFunc, bld_list)
+                        if len(like_me) == 1:
+                            break
+                    done.add(one.houseguid)
+                    yield one
+
         if self._subB is None:
             q = self.session.query(House)
             if use_osm:
                 q = q.options(joinedload(House.osm))
-            self._subB = q.filter_by(ao_id=self.f_id).all()
+            _subB = q.filter_by(ao_id=self.f_id).all()
+            guids = [it.houseguid for it in _subB]
+            if len(guids) == len(set(guids)):
+                self._subB = _subB
+            else:
+                self._subB = only_best(_subB)
         if typ == 'all_b':
             return self._subB
         elif typ == 'found_b':
