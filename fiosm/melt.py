@@ -3,36 +3,34 @@
 from __future__ import division
 import logging
 import nice_street
-from config import *
+import config
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm import relationship, backref, joinedload
+from sqlalchemy.orm import relationship, backref, joinedload, subqueryload
 from sqlalchemy import ForeignKey, Column, Integer, BigInteger, SmallInteger
-from fias_db import Base, Socrbase, House, Addrobj, GUID
-if use_osm:
-    import psycopg2
-    import ppygis
-    import psycopg2.extensions
-    psycopg2.extensions.register_type(psycopg2.extensions.UNICODE)
-    psycopg2.extensions.register_type(psycopg2.extensions.UNICODEARRAY)
-else:
-    psycopg2 = None
+from sqlalchemy import Table
+from sqlalchemy.sql.expression import select
+from fias_db import Base, Socrbase, House, Addrobj, GUID, FiasMeta
 
 
+# with keys socr#aolev
 socr_cache = {}
-#with keys socr#aolev
-
-typ_cond = {'all': '',
-    'found': 'EXISTS(SELECT ao_id FROM ' + prefix + pl_aso_tbl + ' WHERE ao_id=f.id)',
-    'street': 'EXISTS(SELECT ao_id FROM ' + prefix + way_aso_tbl + ' WHERE ao_id=f.id)',
-    'not found': None
-         }
 
 
-if use_osm:
+if config.use_osm:
+    util_engine = create_engine(config.al_dsn, pool_size=2, pool_recycle=180)
+    PolyTable = Table(config.prefix + config.poly_table, FiasMeta,
+                      autoload=True, autoload_with=util_engine)
+    WaysTable = Table(config.prefix + config.ways_table, FiasMeta,
+                      autoload=True, autoload_with=util_engine)
+    PointTable = Table(config.prefix + config.point_table, FiasMeta,
+                       autoload=True, autoload_with=util_engine)
+    del util_engine
+
     class Statistic(Base):
         __tablename__ = 'fiosm_stat'
-        ao_id = Column(Integer, ForeignKey("fias_addr_obj.id"), primary_key=True)
+        ao_id = Column(Integer, ForeignKey("fias_addr_obj.id"),
+                       primary_key=True)
         ao_all = Column(Integer)
         found = Column(Integer)
         street = Column(Integer)
@@ -46,6 +44,10 @@ if use_osm:
         fias = relationship("Addrobj", backref=backref("stat", uselist=False),
                             uselist=False)
 
+        @property
+        def all(self):
+            return self.ao_all
+
         def fromdic(self, dic):
             for it in dic.iteritems():
                 setattr(self, 'ao_all' if it[0] == 'all' else it[0], it[1])
@@ -54,7 +56,7 @@ if use_osm:
             self.fromdic(dic)
 
     class PlaceAssoc(Base):
-        __tablename__ = prefix + pl_aso_tbl
+        __tablename__ = config.prefix + config.pl_aso_tbl
         ao_id = Column(Integer, ForeignKey("fias_addr_obj.id"))
         osm_admin = Column(BigInteger, primary_key=True)
         fias = relationship("Addrobj", backref=backref("place", uselist=False),
@@ -65,29 +67,31 @@ if use_osm:
             self.osm_admin = osmid
 
     class StreetAssoc(Base):
-        __tablename__ = prefix + way_aso_tbl
+        __tablename__ = config.prefix + config.way_aso_tbl
         ao_id = Column(Integer, ForeignKey("fias_addr_obj.id"))
         osm_way = Column(BigInteger, primary_key=True)
-        fias = relationship("Addrobj", backref=backref("street"), uselist=False)
+        fias = relationship("Addrobj", backref=backref("street"),
+                            uselist=False)
 
         def __init__(self, f_id, osmid):
             self.ao_id = f_id
             self.osm_way = osmid
 
     class BuildAssoc(Base):
-        __tablename__ = prefix + bld_aso_tbl
-        h_guid = Column(GUID, ForeignKey("fias_house.houseguid"),
-                        primary_key=False, index=True)
+        __tablename__ = config.prefix + config.bld_aso_tbl
+        h_id = Column(GUID, ForeignKey("fias_house.houseid"),
+                      primary_key=False, index=True)
         osm_build = Column(BigInteger, primary_key=True)
         point = Column(SmallInteger, primary_key=True)
         fias = relationship("House",
-                            backref=backref("osm", uselist=False, lazy=False),
-                            uselist=False, lazy='joined')
+                            backref=backref("osm", uselist=False,
+                                            lazy='joined'),
+                            uselist=False, lazy='select')
 
-        def __init__(self, h_guid, osmid, point):
+        def __init__(self, h_id, osmid, point):
             self.osm_build = osmid
             self.point = point
-            self.h_guid = h_guid
+            self.h_id = h_id
 
 
 osm_base_link = u'http://www.openstreetmap.org/browse'
@@ -120,7 +124,7 @@ def HouseTXTKind(self):
         return u'точка'
     elif self.osm.point == 0:
         return u'полигон'
-if use_osm:
+if config.use_osm:
     House.txtkind = property(HouseTXTKind)
     House.osmlink = property(HouseOSMLink)
 else:
@@ -130,7 +134,7 @@ else:
 
 class fias_AO(object):
     def __init__(self, guid=None, kind=None, osmid=None, parent=None,
-                 conn=None, session=None):
+                 session=None):
         if not guid:
             guid = None
         if isinstance(guid, Addrobj):
@@ -139,15 +143,8 @@ class fias_AO(object):
         else:
             self._guid = guid
             self._fias = None
-        if conn == None and psycopg2:
-            #Connection must not be global to be more thread-safe
-            self.conn = psycopg2.connect(psy_dsn)
-            self.conn.autocommit = True
-        else:
-            #Yet we can share connection to keep their number low
-            self.conn = conn
-        if session == None:
-            engine = create_engine(al_dsn, pool_size=2)
+        if session is None:
+            engine = create_engine(config.al_dsn, pool_size=2)
             Session = sessionmaker(expire_on_commit=False)
             self.session = Session(bind=engine)
         else:
@@ -170,7 +167,7 @@ class fias_AO(object):
         return self.fias.id
 
     def calkind(self):
-        if not use_osm:
+        if not config.use_osm:
             self._kind = 0
             return
         #'found'
@@ -350,14 +347,12 @@ class fias_AO(object):
 
         if self._subB is None:
             q = self.session.query(House)
-            if use_osm:
-                q = q.options(joinedload(House.osm))
             _subB = q.filter_by(ao_id=self.f_id).all()
             guids = [it.houseguid for it in _subB]
             if len(guids) == len(set(guids)):
                 self._subB = _subB
             else:
-                self._subB = only_best(_subB)
+                self._subB = list(only_best(_subB))
         if typ == 'all_b':
             return self._subB
         elif typ == 'found_b':
@@ -406,7 +401,7 @@ class fias_AO(object):
 
     @property
     def stat_db_full(self):
-        if not use_osm:
+        if not config.use_osm:
             return False
         stat = self.fias.stat
         if stat is None:
@@ -419,24 +414,33 @@ class fias_AO(object):
 
     def pullstatA(self):
         '''Pull stat info from statistic obj'''
+        def getvalue(item):
+            value = getattr(stat, item)
+            if value is not None:
+                self._stat[item] = value
+
         stat = self.fias.stat
         if stat is None:
-            return
-        for item in ('all', 'found', 'street', 'all_b', 'found_b'):
-            value = getattr(stat, item if item != 'all' else 'ao_all')
-            if value != None:
-                self._stat[item] = value
-            value = getattr(stat, item + '_r')
-            if value != None:
-                self._stat[item + '_r'] = value
+            return {}
+        for r in ('', '_r'):
+            getvalue('all' + r)
+            if self._stat.get('all', 0):
+                getvalue('found' + r)
+                getvalue('street' + r)
+            getvalue('all_b' + r)
+            if self._stat.get('all_b', 0):
+                getvalue('found_b' + r)
+        return self._stat
 
     def stat(self, typ, savemode=0):
         '''Statistic of childs for item'''
-        if not use_osm:
+        if not config.use_osm:
             return 0
         #Calculable values
         (r, t0) = ('_r', typ[:-2]) if typ.endswith('_r') else ('', typ)
         (b, t0) = ('_b', t0[:-2]) if t0.endswith('_b') else ('', t0)
+        if t0 != 'all' and self.stat('all' + b + r, savemode) == 0:
+            return 0
         if t0 == 'all_found':
             return self.stat('found' + r) + self.stat('street' + r)
         if t0 == 'all_high':
@@ -512,22 +516,23 @@ class fias_AO(object):
             return u"Россия"
 
         if not hasattr(self, '_name'):
-            if self.conn and self.kind:
-                cur = self.conn.cursor()
+            if self.kind:
                 if self.kind == 2:
-                    cur.execute('SELECT name FROM ' + prefix + poly_table + \
-                                '  WHERE osm_id=%s ', (self.osmid,))
-                    name = cur.fetchone()
+                    res = self.session.execute(
+                        PolyTable.select(PolyTable.c.osm_id == self.osmid))
+                    name = res.fetchone()
                 elif self.kind == 1:
-                    cur.execute('SELECT name FROM ' + prefix + ways_table + \
-                                '  WHERE osm_id=%s ', (self.osmid,))
-                    name = cur.fetchone()
+                    res = self.session.execute(
+                        WaysTable.select(WaysTable.c.osm_id == self.osmid))
+                    name = res.fetchone()
                 else:
                     name = None
             else:
                 name = None
-            if name and name[0]:
-                self._name = name[0]
+            if name and name['name:ru']:
+                self._name = name['name:ru']
+            elif name and name['name']:
+                self._name = name['name']
             else:
                 self._name = self.names().next()
         return self._name
@@ -557,38 +562,12 @@ class fias_AO(object):
         else:
             return osm_link(self.osmid)
 
-    @property
-    def geom(self):
-        '''Geometry where buildings can be'''
-        if not self.guid or not use_osm:
-            return None
-        if hasattr(self,'_geom'):
-            return self._geom
-        cur_ = self.conn.cursor()
-        if (self.kind == 2) and (self.osmid is not None):
-            #cur_.execute("SELECT way FROM "+prefix+poly_table+" WHERE osm_id=%s",(self.osmid,))
-            # TODO: add to config if import allow multi-polygon (-G)
-            cur_.execute("SELECT ST_Union(way) as way FROM " +
-                         prefix + poly_table + " WHERE osm_id=%s",
-                         (self.osmid,))
-            self._geom=cur_.fetchone()[0]
-        elif self.kind == 1:
-            cur_.execute("SELECT St_Buffer(ST_Union(w.way),2000) FROM " +
-                         prefix + ways_table + " w, " + prefix + way_aso_tbl +
-                         " s WHERE s.osm_way=w.osm_id AND s.ao_id=%s",
-                         (self.f_id,))
-            self._geom=cur_.fetchone()[0]
-        else:
-            return None
-        return self._geom
-
 
 class fias_AONode(fias_AO):
     def __init__(self, *args, **kwargs):
         if type(args[0]) == fias_AO:
             for it in args[0].__dict__.keys():
                 self.__setattr__(it, args[0].__getattribute__(it))
-                #setattr = copy(args[0])
             self.__class__ = fias_AONode
         else:
             fias_AO.__init__(self, *args, **kwargs)
@@ -597,17 +576,17 @@ class fias_AONode(fias_AO):
     def subO(self, typ, ao_stat=True, pullnames=None):
         '''List of subelements'''
         def get_names_(objs):
-            if not self.conn:
+            if not objs:
                 return
-            ids = [obj.osmid for obj in objs]
-            cur = self.conn.cursor()
-            cur.execute('SELECT osm_id, name FROM ' + prefix + \
-                        (poly_table if typ == 'found' else ways_table) + \
-                        '  WHERE osm_id = ANY (%s) ', (ids,))
-            names = cur.fetchall()
+            ids = set([obj.osmid for obj in objs])
+            tbl = PolyTable if typ == 'found' else WaysTable
+            res = self.session.execute(select(
+                [tbl.c.osm_id, tbl.c.name]).where(tbl.c.osm_id.in_(ids)))
+            names = res.fetchall()
             names = dict(names)
             for obj in objs:
                 obj._name = names[obj.osmid]
+                logging.info(names)
 
         if typ in self._subO:
             if pullnames and typ in ('found', 'street'):
@@ -616,13 +595,13 @@ class fias_AONode(fias_AO):
         if typ in ('not found', 'found', 'street'):
             q = self.session.query(Addrobj).filter_by(parentid=self.f_id,
                                                       livestatus=True)
-            if ao_stat and use_osm:
+            if ao_stat and config.use_osm:
                 q = q.options(joinedload(Addrobj.stat))
-            if typ == 'found' and use_osm:
+            if typ == 'found' and config.use_osm:
                 q = q.join(PlaceAssoc)
-            elif typ == 'street' and use_osm:
+            elif typ == 'street' and config.use_osm:
                 q = q.join(StreetAssoc).distinct(Addrobj.id)
-            elif typ == 'not found' and use_osm:
+            elif typ == 'not found' and config.use_osm:
                 q = q.options(joinedload(Addrobj.street))
                 q = q.options(joinedload(Addrobj.place))
                 #q = q.filter(~Addrobj.street.any(), ~Addrobj.place.has())
@@ -631,11 +610,10 @@ class fias_AONode(fias_AO):
                 self._subO['found'] = []
             self._subO[typ] = []
             for row in q.all():
-                el = fias_AO(row.aoguid, None, None, self.guid, self.conn,
-                             self.session)
+                el = fias_AO(row.aoguid, None, None, self.guid, self.session)
                 el._fias = row
                 #    el._name = row['name']  # TODO :OSM name!
-                if typ == 'not found' and use_osm:
+                if typ == 'not found' and config.use_osm:
                     if row.place is not None:
                         self._subO['found'].append(el)
                     elif row.street:
@@ -653,7 +631,6 @@ class fias_AONode(fias_AO):
             return res
         if typ.endswith('_b'):
             return self.subB(typ)
-
 
     def child_found(self, child, typ):
         if 'not found' in self._subO:

@@ -5,7 +5,7 @@ Created on 18.05.2013
 @author: scond_000
 '''
 from sqlalchemy import Integer, BigInteger, SmallInteger, String, Date, Boolean
-from sqlalchemy import Sequence, Column, ForeignKey
+from sqlalchemy import Sequence, Column, ForeignKey, MetaData
 from sqlalchemy.orm.properties import ColumnProperty
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import deferred, relationship
@@ -16,8 +16,8 @@ from sqlalchemy.types import TypeDecorator, CHAR
 from sqlalchemy.dialects.postgresql import UUID as pg_UUID
 import uuid
 
-
-Base = declarative_base()
+FiasMeta = MetaData()
+Base = declarative_base(metadata=FiasMeta)
 
 
 class GUID(TypeDecorator):
@@ -175,6 +175,7 @@ class House(FiasRow, Base):
     houseid = Column(GUID, primary_key=True)
     startdate = Column(Date, default=date(1900, 1, 1))
     enddate = Column(Date, default=date(2100, 1, 1))
+    updatedate = Column(Date, default=date(1900, 1, 1))
 
     postalcode = deferred(Column(String(6)))
     ifnsfl = deferred(Column(String(4)))
@@ -183,7 +184,6 @@ class House(FiasRow, Base):
     terrifnsul = deferred(Column(String(4)))
     okato = deferred(Column(String(11)))
     oktmo = deferred(Column(String(11)))
-    updatedate = deferred(Column(Date, default=date(1900, 1, 1)))
 
     housenum = Column(String(20))
     eststatus = Column(SmallInteger)
