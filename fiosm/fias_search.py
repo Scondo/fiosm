@@ -197,9 +197,12 @@ def FindByName(pgeom, name, tbl=prefix + ways_table,
     return [osmid]
     '''
     if pgeom is None:
-        res = AsyncQuery().execute("SELECT DISTINCT osm_id FROM " + tbl +
-                                   " WHERE lower(" + name_tag + ") = lower(%s)"
-                                   "" + addcond, (name,))
+        res = AsyncQuery().execute("SELECT DISTINCT osm_id, ST_Area(way)"
+                                   " FROM " + tbl + " "
+                                   "WHERE lower(" + name_tag + ") = lower(%s)"
+                                   " " + addcond + " "
+                                   "ORDER BY ST_Area(way) DESC",
+                                   (name,))
     else:
         res = AsyncQuery().execute("SELECT DISTINCT osm_id FROM " + tbl +
                                    " WHERE lower(" + name_tag + ") = lower(%s) "
