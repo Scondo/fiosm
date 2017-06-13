@@ -101,7 +101,7 @@ def get_descr(words, fullname):
             if desc_word in socr:
                 if not res:
                     # При неоднозначности сокращение имеет приоритет
-                    res.index(0, desc_word)
+                    res.insert(0, desc_word)
                 desc_lex = [it for it in morph.parse(full)
                             if {'ADJF', 'nomn', 'masc'} in it.tag]
                 res.append(desc_lex[0].inflect({full_gen}).word.title())
