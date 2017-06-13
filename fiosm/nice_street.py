@@ -99,7 +99,7 @@ def get_descr(words, fullname):
             logging.warn(("Unknown gender: ", fullname, full_lex, desc_word))
         for full, socr in descr.iteritems():
             if desc_word in socr:
-                if not res:
+                if res:
                     # При неоднозначности сокращение имеет приоритет
                     res.insert(0, desc_word)
                 desc_lex = [it for it in morph.parse(full)
@@ -128,23 +128,23 @@ def get_num(words, fullname):
         return ((num_word,), words)
 
 
-def get_repr_tag(words):
-    def impossible(tag):
-        if {'Surn', 'nomn'} in tag:
-            return True
-        if {'Name', 'nomn'} in tag:
-            return True
-        return False
+def get_repr_tags(words):
+    def possible(lex):
+        if {'Surn', 'nomn'} in lex.tag:
+            return False
+        if {'Name', 'nomn'} in lex.tag:
+            return False
+        return True
     repr_word = words[-1]
     lexemes = morph.parse(repr_word)
-    for lex in lexemes:
-        if not impossible(lex.tag):
-            return lex.tag
-    # Default parse contains only impossible lexemes
-    lexemes = suff_morph.parse(repr_word, repr_word.lower(), set())
-    for lex in lexemes:
-        if not impossible(lex[1]):
-            return lex[1]
+    lexemes = filter(possible, lexemes)
+    if not lexemes:
+        # Default parse contains only impossible lexemes
+        lexemes = suff_morph.parse(repr_word, repr_word.lower(), set())
+        lexemes = filter(possible, lexemes)
+    score = lexemes[0].score
+    # возвращаем все варианты с вероятностью равной максимальной
+    return [l.tag for l in lexemes if l.score == score]
 
 
 def check_synonym(name):
@@ -218,18 +218,17 @@ def nice(basename, shortname, fullname, place=False):
             else:
                 descs = ('',)
 
-            repr_tag = get_repr_tag(words)
-            if repr_tag is not None:
-                for num in nums:
-                    for desc in descs:
-                        for words_ in alt_jo(words):
-                            if {'ADJF'} in repr_tag:
-                                yield btr_join([num, desc] + words_ + [fullname, ])
-                                yield btr_join([num, ] + words_ + [desc, fullname, ])
-                            else:
-                                yield btr_join([num, fullname, desc] + words_)
-                                yield btr_join([desc, num, fullname] + words_)
-                                yield btr_join([num, desc, fullname] + words_)
+            repr_tags = get_repr_tags(words)
+            for num in nums:
+                for desc in descs:
+                    for words_ in alt_jo(words):
+                        if any([({'ADJF'} in tag) for tag in repr_tags]):
+                            yield btr_join([num, desc] + words_ + [fullname, ])
+                            yield btr_join([num, ] + words_ + [desc, fullname])
+                        if not all([({'ADJF'} in tag) for tag in repr_tags]):
+                            yield btr_join([num, fullname, desc] + words_)
+                            yield btr_join([desc, num, fullname] + words_)
+                            yield btr_join([num, desc, fullname] + words_)
             basename_ = u" ".join((fullname, name))
 
         yield basename_
