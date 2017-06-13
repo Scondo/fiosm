@@ -15,9 +15,11 @@ from itertools import chain
 synonyms = ((u'Первой Маёвки', u'1 Маевки'),
             (u'Пруд-Ключики', u'Пруд Ключики'),
             (u'Льва Толстого', u'Л.Толстого', u'Л. Толстого', u'Толстого'),
-            (u'К.Воробьёва', u'К.Воробьева', u'Воробьёва'),  # Курск Константина?
+            (u'Константина Воробьёва', u'Константина Воробьева',
+             u'К.Воробьёва', u'К.Воробьева', u'Воробьёва', u'Воробьева'),
             (u'Константина Царёва', u'Константина Царева',
              u'К.Царёва', u'К.Царева', u'Царёва', u'Царева'),
+            (u'гаражно-строительный кооператив', u'гаражно-строительный кооп.')
             )
 jo = {u'Толмачёв': u'Толмачев',
       u'Берёзов': u'Березов',
@@ -75,6 +77,7 @@ desc_all = set(desc_all_g())
 
 
 def get_descr(words, fullname):
+    """Разделение слова на описательное и остальные"""
     desc_word = u''
     if words[0] in desc_all:
         desc_word = words[0]
@@ -96,10 +99,13 @@ def get_descr(words, fullname):
             logging.warn(("Unknown gender: ", fullname, full_lex, desc_word))
         for full, socr in descr.iteritems():
             if desc_word in socr:
-                res.extend(socr)
+                if not res:
+                    # При неоднозначности сокращение имеет приоритет
+                    res.index(0, desc_word)
                 desc_lex = [it for it in morph.parse(full)
                             if {'ADJF', 'nomn', 'masc'} in it.tag]
-                res.insert(0, desc_lex[0].inflect({full_gen}).word.title())
+                res.append(desc_lex[0].inflect({full_gen}).word.title())
+                res.extend(socr)
         return (res, words)
     else:
         # TODO: Добавить проверку/пропуск на рассогласование
@@ -107,6 +113,7 @@ def get_descr(words, fullname):
 
 
 def get_num(words, fullname):
+    """Разделение слова на числительное и остальные"""
     num_word = u''
     if words[0] in numerals.adj:
         num_word = words[0]
@@ -129,8 +136,6 @@ def get_repr_tag(words):
             return True
         return False
     repr_word = words[-1]
-    #if repr_word.isdigit():
-    #    repr_word = words[-2]
     lexemes = morph.parse(repr_word)
     for lex in lexemes:
         if not impossible(lex.tag):
@@ -170,8 +175,7 @@ def alt_jo(words):
 
 
 def unslash(basename):
-    '''Replace slashes with parentheses
-    '''
+    '''Replace slashes with parentheses'''
     if basename.count('/') == 2:
         basename = basename.replace('/', '(', 1)
         basename = basename.replace('/', ')', 1)
