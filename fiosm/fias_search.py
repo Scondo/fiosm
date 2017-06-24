@@ -15,7 +15,7 @@ psycopg2.extensions.register_type(psycopg2.extensions.UNICODEARRAY)
 
 way_only = frozenset((u'улица', u'проезд', u'проспект', u'переулок', u'шоссе',
                       u'тупик', u'бульвар', u'проулок', u'набережная',
-                      u'дорога', u'площадь'))
+                      u'дорога', u'площадь', u'километр', u'аллея'))
 pl_only = frozenset((u'город', u'район', u'территория', u'городок',
                      u'деревня', u'поселок', u'квартал'))
 
@@ -73,14 +73,14 @@ class FutureResult(object):
         self.cacheall = None
 
     def fetchall(self):
-        psycopg2.extras.wait_select(self.cur.connection)
         if self.cacheall is None:
+            psycopg2.extras.wait_select(self.cur.connection)
             self.cacheall = self.cur.fetchall()
         return self.cacheall
 
     def fetchone(self):
-        psycopg2.extras.wait_select(self.cur.connection)
         if self.cacheone is None:
+            psycopg2.extras.wait_select(self.cur.connection)
             self.cacheone = self.cur.fetchone()
         return self.cacheone
 
@@ -456,10 +456,25 @@ def AssORootM():
 
 
 if __name__ == "__main__":
-    from deploy import AssocTableReCreate, AssocBTableReCreate, StatTableReCreate, AssocIdxCreate
-    AssocTableReCreate()
-    AssocBTableReCreate()
+    import argparse
+    from deploy import AssocTableReCreate, AssocBTableReCreate, AssocIdxCreate
+    from deploy import StatTableReCreate
+    p = argparse.ArgumentParser()
+    p.add_argument('--allnew', action='store_true')
+    p.add_argument('region', nargs="?")
+    args = p.parse_args()
+    if args.allnew:
+        AssocTableReCreate()
+        AssocBTableReCreate()
 #    AssocTriggersReCreate()
     StatTableReCreate()
-    AssORoot()
-    AssocIdxCreate()
+    if args.region:
+        r = AsyncQuery().fetchone("SELECT aoguid FROM fias_addr_obj "
+                                  "WHERE (parentid is Null) and "
+                                  "livestatus and regioncode=%s",
+                                  (args.region, ))
+        AssocRegion(r[0])
+    else:
+        AssORoot()
+    if args.allnew:
+        AssocIdxCreate()
