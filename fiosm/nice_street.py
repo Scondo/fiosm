@@ -35,6 +35,10 @@ jo = {u'Толмачёв': u'Толмачев',
       u'Семёнов': u'Семенов',
       u'Озёрн': u'Озерн',
       u'Жигулёв': u'Жигулев',
+      u'Трёх': u'Трех',
+      u'Казён': u'Казен',
+      u'Кремлёв': u'Кремлев',
+      u'Пугачёв': u'Пугачев',
       }
 
 all_synonyms = set(chain(*synonyms))
@@ -97,6 +101,8 @@ def get_descr(words, fullname):
         if full_gen is None:
             full_gen = 'masc'
             logging.warn(("Unknown gender: ", fullname, full_lex, desc_word))
+        word_lex = morph.parse(words[-1])
+        word_gen = word_lex[0].tag.gender
         for full, socr in descr.iteritems():
             if desc_word in socr:
                 if res:
@@ -105,6 +111,8 @@ def get_descr(words, fullname):
                 desc_lex = [it for it in morph.parse(full)
                             if {'ADJF', 'nomn', 'masc'} in it.tag]
                 res.append(desc_lex[0].inflect({full_gen}).word.title())
+                if word_gen:
+                    res.append(desc_lex[0].inflect({word_gen}).word.title())
                 res.extend(socr)
         return (res, words)
     else:
@@ -115,37 +123,43 @@ def get_descr(words, fullname):
 def get_num(words, fullname):
     """Разделение слова на числительное и остальные"""
     num_word = u''
-    if words[0] in numerals.adj:
+    if words[0].lower() in numerals.adj:
         num_word = words[0]
         words = words[1:]
-    elif words[-1] in numerals.adj:
+    elif words[-1].lower() in numerals.adj:
         num_word = words[-1]
         words = words[:-1]
     if num_word:
         # TODO: Добавить проверку/пропуск на рассогласование
-        return ((num_word, numerals.adj[num_word]), words)
+        return ((num_word, numerals.adj[num_word.lower()]), words)
     else:
         return ((num_word,), words)
 
 
 def get_repr_tags(words):
-    def possible(lex):
-        if {'Surn', 'nomn'} in lex.tag:
+    def possible(tag):
+        if {'Surn', 'nomn'} in tag:
             return False
-        if {'Name', 'nomn'} in lex.tag:
+        if {'Name', 'nomn'} in tag:
             return False
         return True
     repr_word = words[-1]
-    lexemes = morph.parse(repr_word)
-    lexemes = filter(possible, lexemes)
+    lexemes = morph.parse(repr_word)  # TODO: Ватин, клочков...
+    lexemes = filter(lambda lex: possible(lex.tag), lexemes)
     if not lexemes:
         # Default parse contains only impossible lexemes
         lexemes = suff_morph.parse(repr_word, repr_word.lower(), set())
-        lexemes = filter(possible, lexemes)
-    score = lexemes[0].score
-    # возвращаем все варианты с вероятностью равной максимальной
-    return [l.tag for l in lexemes if l.score == score]
-
+        tags = [lex[1] for lex in lexemes]
+        res = list(filter(possible, tags))
+    else:
+        res = [l.tag for l in lexemes]
+    # подпорочки по окончанию - иногда сокращённые прилагательные
+    # от редких форм не угадываются и принимаются за существительные
+    if repr_word.endswith(u'ов'):
+        res.extend([l.tag for l in morph.parse(u'отцов')])
+    elif repr_word.endswith(u'ин'):
+        res.extend([l.tag for l in morph.parse(u'мамин')])
+    return res
 
 def check_synonym(name):
     if name in all_synonyms:
@@ -222,7 +236,8 @@ def nice(basename, shortname, fullname, place=False):
             for num in nums:
                 for desc in descs:
                     for words_ in alt_jo(words):
-                        if any([({'ADJF'} in tag) for tag in repr_tags]):
+                        if any([({'ADJF'} in tag or {'ADJS'} in tag)
+                                for tag in repr_tags]):
                             yield btr_join([num, desc] + words_ + [fullname, ])
                             yield btr_join([num, ] + words_ + [desc, fullname])
                         if not all([({'ADJF'} in tag) for tag in repr_tags]):
