@@ -5,11 +5,7 @@ Created on 28.07.2013
 '''
 from config import al_dsn
 import fias_db
-from sqlalchemy import create_engine
-from sqlalchemy.orm import scoped_session, sessionmaker
-engine = create_engine(al_dsn)
-session_factory = sessionmaker(bind=engine)
-Session = scoped_session(session_factory)
+from views import Session
 return_limit = 100
 import uuid
 from pyramid_rpc.xmlrpc import xmlrpc_method
