@@ -6,7 +6,7 @@ import nice_street
 import config
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm import relationship, backref, joinedload, subqueryload
+from sqlalchemy.orm import relationship, backref, joinedload
 from sqlalchemy import ForeignKey, Column, Integer, BigInteger, SmallInteger
 from sqlalchemy import Table
 from sqlalchemy.sql.expression import select
@@ -124,6 +124,8 @@ def HouseTXTKind(self):
         return u'точка'
     elif self.osm.point == 0:
         return u'полигон'
+
+
 if config.use_osm:
     House.txtkind = property(HouseTXTKind)
     House.osmlink = property(HouseOSMLink)
@@ -158,7 +160,7 @@ class fias_AO(object):
 
     @property
     def guid(self):
-        if self._guid == None:
+        if self._guid is None:
             self._guid = self.fias.aoguid
         return self._guid
 
@@ -170,13 +172,13 @@ class fias_AO(object):
         if not config.use_osm:
             self._kind = 0
             return
-        #'found'
+        # 'found'
         cid = self.fias.place
         if cid is not None:
             self._osmid = cid.osm_admin
             self._kind = 2
             return 2
-        #'street':
+        # 'street':
         cid = self.fias.street
         if cid:
             self._osmid = cid[0].osm_way
@@ -187,7 +189,7 @@ class fias_AO(object):
     def getkind(self):
         if self.guid is None:
             return 2
-        if self._kind == None:
+        if self._kind is None:
             self.calkind()
         return self._kind
 
@@ -222,21 +224,21 @@ class fias_AO(object):
     def getFiasData(self):
         if self._guid:
             self._fias = self.session.query(Addrobj).\
-            filter_by(aoguid=self.guid).one()
+                filter_by(aoguid=self.guid).one()
         elif self._osmid and self._osmkind == 2:
             a = self.session.query(PlaceAssoc).\
-            filter_by(osm_admin=self._osmid).first()
+                filter_by(osm_admin=self._osmid).first()
             self._fias = a.fias
         elif self._osmid and self._osmkind == 1:
             a = self.session.query(StreetAssoc).\
-            filter_by(osm_way=self._osmid).first()
+                filter_by(osm_way=self._osmid).first()
             self._fias = a.fias
         else:
             self._fias = Addrobj({'formalname': 'Россия'})
 
     @property
     def fias(self):
-        if self._fias == None:
+        if self._fias is None:
             self.getFiasData()
         return self._fias
 
@@ -244,7 +246,7 @@ class fias_AO(object):
         if not name.startswith('_') and hasattr(self.fias, name):
             return getattr(self.fias, name)
         else:
-            raise AttributeError
+            raise AttributeError(name)
 
     @property
     def formalname(self):
@@ -257,8 +259,8 @@ class fias_AO(object):
         key = u"#".join((self.fias.shortname, str(self.fias.aolevel)))
         if key not in socr_cache:
             res = self.session.query(Socrbase).\
-            filter_by(scname=self.fias.shortname, level=self.fias.aolevel).\
-            first()
+                filter_by(scname=self.fias.shortname,
+                          level=self.fias.aolevel).first()
             if res:
                 socr_cache[key] = res.socrname.lower()
             else:
@@ -306,7 +308,7 @@ class fias_AO(object):
 
     @property
     def parentguid(self):
-        if self._parent == None:
+        if self._parent is None:
             if self.fias.parent is not None:
                 self._parent = self.fias.parent.aoguid
         return self._parent
@@ -321,7 +323,7 @@ class fias_AO(object):
 
     @property
     def isok(self):
-        return (self.fias != None) or (self.guid == None)
+        return (self.fias is not None) or (self.guid is None)
 
     def subB(self, typ):
         def only_best(bld_list):
@@ -361,32 +363,33 @@ class fias_AO(object):
             return filter(lambda h: h.osm is None, self._subB)
 
     def CalcAreaStat(self, typ):
-        #check in pulled children
-        if hasattr(self, '_subO') and\
-        (typ in self._subO or (typ == 'all' and 'not found' in self._subO)):
-                self._stat[typ] = len(self.subO(typ))
+        # check in pulled children
+        if (hasattr(self, '_subO') and
+                (typ in self._subO or
+                 (typ == 'all' and 'not found' in self._subO))):
+            self._stat[typ] = len(self.subO(typ))
         elif typ in ('all', 'found', 'street'):
-            if ('all' in self._stat and self._stat['all'] == 0) or\
-            (self.kind == 0 and typ == 'found') or\
-            (self.kind < 2 and typ == 'street'):
+            if (('all' in self._stat and self._stat['all'] == 0) or
+                    (self.kind == 0 and typ == 'found') or
+                    (self.kind < 2 and typ == 'street')):
                 self._stat[typ] = 0
             else:
-                #make request
+                # make request
                 q = self.session.query(Addrobj).filter_by(parentid=self.f_id,
                                                           livestatus=True)
                 if typ == 'found':
                     q = q.join(PlaceAssoc)
                 elif typ == 'street':
                     q = q.join(StreetAssoc).distinct(Addrobj.id)
-                #otherwise - all
+                # otherwise - all
                 self._stat[typ] = q.count()
 
         elif typ.endswith('_b'):
-            #no buildings in country
-            if self.guid == None:
+            # no buildings in country
+            if self.guid is None:
                 self._stat[typ] = 0
                 return
-            #all building children are easily available from all_b
+            # all building children are easily available from all_b
             self._stat[typ] = len(self.subB(typ))
 
     def CalcRecStat(self, typ, savemode=1):
@@ -436,7 +439,7 @@ class fias_AO(object):
         '''Statistic of childs for item'''
         if not config.use_osm:
             return 0
-        #Calculable values
+        # Calculable values
         (r, t0) = ('_r', typ[:-2]) if typ.endswith('_r') else ('', typ)
         (b, t0) = ('_b', t0[:-2]) if t0.endswith('_b') else ('', t0)
         if t0 != 'all' and self.stat('all' + b + r, savemode) == 0:
@@ -448,20 +451,21 @@ class fias_AO(object):
         if t0 == 'all_low':
             return 0.2 * self.stat('all' + b + r)
         if t0 == 'not found':
-            #Try to pull saved stat
-            if not (('all' + b + r) in self._stat) and self.guid != None:
+            # Try to pull saved stat
+            if not (('all' + b + r) in self._stat) and self.guid is not None:
                 self.pullstatA()
 
             if r and ('all' + b not in self._stat):
                 self.CalcRecStat(typ, savemode)
-            return self.stat('all' + b + r) - (self.stat('found_b' + r) if b else self.stat('all_found' + r))
-        #There no streets or buildings in root
-        if self.guid == None and (typ == 'street' or typ.endswith('_b')):
+            return self.stat('all' + b + r) -\
+                (self.stat('found_b' + r) if b else self.stat('all_found' + r))
+        # There are no streets or buildings in root
+        if self.guid is None and (typ == 'street' or typ.endswith('_b')):
             return 0
-        #Try to pull saved stat
-        if not (typ in self._stat) and self.guid != None:
+        # Try to pull saved stat
+        if not (typ in self._stat) and self.guid is not None:
             self.pullstatA()
-        #If still no stat - calculate
+        # If still no stat - calculate
         if typ not in self._stat:
             if r:
                 self.CalcRecStat(typ, savemode)
@@ -480,7 +484,7 @@ class fias_AO(object):
         1 - if have all not recursive,
         2 - if have all
         '''
-        if self.guid == None:
+        if self.guid is None:
             return
         stat = self._stat
         a = ('all' in stat) and ('found' in stat) and ('street' in stat)
@@ -548,7 +552,7 @@ class fias_AO(object):
                 # Do not even try if not found or root
                 return None
             self.calkind()
-            #If kind other than 'not found' then we receive osmid
+            # If kind other than 'not found' then we receive osmid
         return self._osmid
 
     @osmid.setter
