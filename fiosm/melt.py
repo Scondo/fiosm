@@ -11,8 +11,11 @@ from sqlalchemy import ForeignKey, Column, Integer, BigInteger, SmallInteger
 from sqlalchemy import Table
 from sqlalchemy.sql.expression import select
 from fias_db import Base, Socrbase, House, Addrobj, GUID, FiasMeta
+from sqlalchemy.ext import baked
+from sqlalchemy import bindparam
 
 
+bakery = baked.bakery()
 # with keys socr#aolev
 socr_cache = {}
 
@@ -348,8 +351,9 @@ class fias_AO(object):
                     yield one
 
         if self._subB is None:
-            q = self.session.query(House)
-            _subB = q.filter_by(ao_id=self.f_id).all()
+            baked_query = bakery(lambda s: s.query(House))
+            baked_query += lambda q: q.filter(House.ao_id == bindparam('aoid'))
+            _subB = baked_query(self.session).params(aoid=self.f_id).all()
             guids = [it.houseguid for it in _subB]
             if len(guids) == len(set(guids)):
                 self._subB = _subB
