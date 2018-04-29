@@ -15,30 +15,37 @@ from itertools import chain
 synonyms = ((u'Первой Маёвки', u'1 Маевки'),
             (u'Пруд-Ключики', u'Пруд Ключики'),
             (u'Льва Толстого', u'Л.Толстого', u'Л. Толстого', u'Толстого'),
+            (u'Максима Горького', u'М.Горького', u'М. Горького', u'Горького'),
             (u'Константина Воробьёва', u'Константина Воробьева',
              u'К.Воробьёва', u'К.Воробьева', u'Воробьёва', u'Воробьева'),
             (u'Константина Царёва', u'Константина Царева',
              u'К.Царёва', u'К.Царева', u'Царёва', u'Царева'),
+            (u'Академика Королёва', u'Академика Королева',
+             u'Королёва', u'Королева'),
+            (u'лейтенанта Шмидта', u'л-та Шмидта', u'Шмидта'),
             (u'гаражно-строительный кооператив', u'гаражно-строительный кооп.')
             )
-jo = {u'Толмачёв': u'Толмачев',
+jo = {u'Артём': u'Артем',
       u'Берёзов': u'Березов',
+      u'Жигулёв': u'Жигулев',
       u'Звёздн': u'Звездн',
+      u'Зелён': u'Зелен',
+      u'Казён': u'Казен',
+      u'Каланчёв': u'Каланчев',
+      u'Королёв': u'Королев',
+      u'Краснознамён': u'Краснознамен',
+      u'Кремлёв': u'Кремлев',
       u'Лётн': u'Летн',
       u'Лётч': u'Летч',
-      u'Артём': u'Артем',
-      u'Краснознамён': u'Краснознамен',
-      u'Хрущёв': u'Хрущев',
-      u'Новосёлов': u'Новоселов',
-      u'Зелён': u'Зелен',
       u'Молодёжн': u'Молодежн',
-      u'Семёнов': u'Семенов',
+      u'Новосёлов': u'Новоселов',
       u'Озёрн': u'Озерн',
-      u'Жигулёв': u'Жигулев',
-      u'Трёх': u'Трех',
-      u'Казён': u'Казен',
-      u'Кремлёв': u'Кремлев',
       u'Пугачёв': u'Пугачев',
+      u'Толмачёв': u'Толмачев',
+      u'Трёх': u'Трех',
+      u'Семёнов': u'Семенов',
+      u'Филёв': u'Филев',
+      u'Хрущёв': u'Хрущев',
       }
 
 all_synonyms = set(chain(*synonyms))
@@ -65,7 +72,7 @@ suff_morph = pymorphy2.units.KnownSuffixAnalyzer(morph)
 
 
 def desc_all_g():
-    for full, socr in descr.iteritems():
+    for full, socr in descr.items():
         yield full
         f_ = [it for it in morph.parse(full)
               if {'ADJF', 'nomn', 'masc'} in it.tag][0]
@@ -92,7 +99,7 @@ def get_descr(words, fullname):
     if desc_word.endswith(u'.'):
         res = []
         # небольшой набор костылей
-        if fullname.endswith(u'кооператив'):
+        if fullname.endswith(u'кооператив') or fullname.endswith(u'кооп.'):
             # full_lex = morph.parse(u'кооператив')
             full_gen = 'masc'
         else:
@@ -215,6 +222,8 @@ def nice(basename, shortname, fullname, place=False):
         yield u" ".join((basename, fullname))
     elif fullname == u'край':
         yield u" ".join((basename, fullname))
+    elif fullname == u'чувашия':
+        yield u"Чувашия"
 
     for name in check_synonym(basename):
         # Check when state part already in name
