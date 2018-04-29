@@ -339,12 +339,15 @@ class fias_AO(object):
                 if len(like_me) == 1:
                     yield one
                 else:
-                    for fiFunc in (lambda it: it.updatedate >= one.updatedate,
-                                   lambda it: it.startdate >= one.startdate,
-                                   lambda it: it.enddate >= one.enddate,
-                                   lambda it: it.divtype >= one.divtype,
-                                   ):
-                        like_me = filter(fiFunc, bld_list)
+                    for kFunc in (lambda it: it.updatedate,
+                                  lambda it: it.startdate,
+                                  lambda it: it.enddate,
+                                  lambda it: it.divtype,
+                                  ):
+                        like_me = sorted(like_me, key=kFunc, reverse=True)
+                        one = like_me[0]
+                        like_me = filter(lambda x: kFunc(x) >= kFunc(one),
+                                         like_me)
                         if len(like_me) == 1:
                             break
                     done.add(one.houseguid)
@@ -594,7 +597,7 @@ class fias_AONode(fias_AO):
             names = dict(names)
             for obj in objs:
                 obj._name = names[obj.osmid]
-                logging.info(names)
+                #logging.info(names)
 
         if typ in self._subO:
             if pullnames and typ in ('found', 'street'):
