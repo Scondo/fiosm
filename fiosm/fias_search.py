@@ -2,11 +2,11 @@
 # -*- coding: UTF-8 -*-
 
 import melt
-from config import *
 import config
 import psycopg2
 import ppygis
-# import psycopg2.extensions
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from collections import OrderedDict
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
@@ -21,9 +21,9 @@ pl_only = frozenset((u'город', u'район', u'территория', u'г
 
 
 class AQuery(object):
-    def __init__(self, poolsize=5):
+    def __init__(self, poolsize=8):
         self.conns = []
-        self.poolsize = poolsize
+        self.cachesize = poolsize * 2
         for _ in range(poolsize):
             self.conns.append(psycopg2.connect(config.psy_dsn, async=True))
         self.cache = OrderedDict()
@@ -33,11 +33,18 @@ class AQuery(object):
         import select
         from psycopg2.extensions import POLL_OK, POLL_READ, POLL_WRITE
         timeout = 0
+        firstpass = True
         while 1:
             for conn in self.conns:
                 state = conn.poll()
                 if state == POLL_OK:
+                    # Fetch all data bound to this connection
+                    # for fut in self.cache.values():
+                    #    if fut.cur.connection == conn:
+                    #        fut.fetchall()
                     return conn
+                elif firstpass:
+                    firstpass = False
                 elif state == POLL_READ:
                     select.select([conn.fileno()], [], [], timeout)
                 elif state == POLL_WRITE:
@@ -53,7 +60,7 @@ class AQuery(object):
         cur = conn.cursor()
         self.curs[conn] = cur
         cur.execute(query, params)
-        if len(self.cache) > self.poolsize:
+        if len(self.cache) > self.cachesize:
             self.cache.popitem(False)
         res = FutureResult(cur)
         self.cache[(query, params)] = res
@@ -79,10 +86,13 @@ class FutureResult(object):
         return self.cacheall
 
     def fetchone(self):
+        if self.cacheall is not None:
+            self.cacheone = self.cacheall[0]
         if self.cacheone is None:
             psycopg2.extras.wait_select(self.cur.connection)
             self.cacheone = self.cur.fetchone()
         return self.cacheone
+
 
 _AQ = None
 
@@ -92,6 +102,7 @@ def AsyncQuery():
     if _AQ is None:
         _AQ = AQuery()
     return _AQ
+
 
 point_r = None
 poly_r = None
@@ -105,7 +116,8 @@ def MultiChk():
     if multichkcache is None:
         q = AsyncQuery()
         cols = q.execute('SELECT column_name FROM information_schema.columns '
-                         'WHERE table_name = %s', (prefix + poly_table, ))
+                         'WHERE table_name = %s',
+                         (config.prefix + config.poly_table, ))
         multichkcache = set([it[0] for it in cols.fetchall()])
     return multichkcache
 
@@ -129,33 +141,29 @@ def geom(AO):
     return res
 
 
-def InitPointR():
+def InitPointR(session):
     """Init point restriction with already used buildings"""
     global point_r
     # points are only buildings
-    points = AsyncQuery().execute('SELECT osm_build FROM ' +
-                                  prefix + bld_aso_tbl + ' WHERE point=1')
-    point_r = set([it[0] for it in points.fetchall()])
+    q = session.query(melt.BuildAssoc).filter_by(point=1)
+    point_r = set([it.osm_build for it in q.all()])
 
 
-def InitPolyR():
+def InitPolyR(session):
     """Init poly restriction with already used buildings and places"""
     global poly_r
     # polygons are buildings and places
-    poly = AsyncQuery().execute('SELECT osm_build FROM ' +
-                                prefix + bld_aso_tbl + ' WHERE point=0')
-    poly_r = set([it[0] for it in poly.fetchall()])
-    poly = AsyncQuery().execute('SELECT osm_admin FROM ' +
-                                prefix + pl_aso_tbl)
-    poly_r.update([it[0] for it in poly.fetchall()])
+    q = session.query(melt.BuildAssoc).filter_by(point=0)
+    poly_r = set([it.osm_build for it in q.all()])
+    q = session.query(melt.PlaceAssoc)
+    poly_r.update([it.osm_admin for it in q.all()])
 
 
-def InitWayR():
+def InitWayR(session):
     """Init way restriction with already used streets"""
     global way_r
-    way = AsyncQuery().execute('SELECT osm_way FROM ' +
-                               prefix + way_aso_tbl)
-    way_r = set([it[0] for it in way.fetchall()])
+    q = session.query(melt.StreetAssoc)
+    way_r = set([it.osm_way for it in q.all()])
 
 
 def Subareas(elem):
@@ -168,8 +176,8 @@ def Subareas(elem):
     else:
         osmid = elem.osmid * (-1)
     mem = AsyncQuery().fetchone("SELECT members FROM " +
-                                prefix + slim_rel_tbl + " WHERE id=%s",
-                                (osmid,))
+                                config.prefix + config.slim_rel_tbl +
+                                " WHERE id=%s", (osmid,))
     if mem is None:
         return {}
     mem = mem[0]
@@ -182,14 +190,14 @@ def Subareas(elem):
     for id_a in mem:
         # using only valid polygons i.e. processed by osm2pgsql
         name = AsyncQuery().fetchone('SELECT name FROM ' +
-                                     prefix + poly_table + ' WHERE osm_id=%s ',
-                                     (id_a,))
+                                     config.prefix + config.poly_table +
+                                     ' WHERE osm_id=%s ', (id_a,))
         if name:
             res[name[0]] = id_a
     return res
 
 
-def FindByName(pgeom, name, tbl=prefix + ways_table,
+def FindByName(pgeom, name, tbl=config.prefix + config.ways_table,
                addcond="", name_tag="name"):
     '''Get osm representation of object 'name'
     That items must lies within polygon pgeom (polygon of parent territory)
@@ -205,16 +213,10 @@ def FindByName(pgeom, name, tbl=prefix + ways_table,
                                    (name,))
     else:
         res = AsyncQuery().execute("SELECT DISTINCT osm_id FROM " + tbl +
-                                   " WHERE lower(" + name_tag + ") = lower(%s) "
-                                   "AND ST_Within(way,%s)" + addcond,
+                                   " WHERE lower(" + name_tag + ") = lower(%s)"
+                                   " AND ST_Within(way,%s)" + addcond,
                                    (name, pgeom))
-    return [it[0] for it in res.fetchall()]
-
-
-def FindByKladr(elem, tbl=prefix + poly_table, addcond=""):
-    res = AsyncQuery().execute("SELECT name, osm_id FROM " + tbl + ""
-        """ WHERE "kladr:user" = %s""" + addcond, (elem.fias.code,))
-    return res.fetchall()
+    return res
 
 
 def FindAssocPlace(elem, pgeom):
@@ -223,41 +225,40 @@ def FindAssocPlace(elem, pgeom):
             return osmid not in poly_r
         return session.query(melt.PlaceAssoc).get(osmid) is None
 
+    def refine(id_list, addcond):
+        return AsyncQuery().execute("SELECT DISTINCT osm_id FROM " +
+                                    config.prefix + config.poly_table +
+                                    " WHERE osm_id IN %s AND " + addcond,
+                                    (tuple(id_list),)).fetchall()
+
     session = elem.session
-    kladr = FindByKladr(elem, addcond=" AND building ISNULL")
-    if kladr and check_adm(kladr[0][1]):
-        elem.name = kladr[0][0]
-        if poly_r is not None:
-            poly_r.add(kladr[0][1])
-        return kladr[0][1]
     for name in elem.names():
-        for name_tag in ('name', 'place_name', '"name:ru"',
-                         '"official_name"', '"official_name:ru"'):
-            checked = FindByName(pgeom, name, prefix + poly_table,
-                             " AND building ISNULL", name_tag)
-            checked = filter(check_adm, checked)
+        checked_all = [FindByName(pgeom, name,
+                                  config.prefix + config.poly_table,
+                                  " AND building ISNULL", name_tag)
+                       for name_tag in ('"official_name:ru"',
+                                        '"official_name"',
+                                        '"name:ru"', 'place_name', 'name')]
+        for checked in checked_all:
+            checked = [it[0] for it in checked.fetchall() if check_adm(it[0])]
 
             if len(checked) > 1 and 'boundary' in MultiChk():
-                checked0 = FindByName(pgeom, name, prefix + poly_table,
-                             " AND building ISNULL AND "
-                             "boundary='administrative'", name_tag)
-                checked0 = filter(check_adm, checked0)
+                checked0 = refine(checked, "boundary='administrative'")
+                checked0 = [it[0] for it in checked0 if check_adm(it[0])]
                 if len(checked0) != 0:
                     checked = checked0
 
             if len(checked) > 1 and 'admin_level' in MultiChk():
-                checked0 = FindByName(pgeom, name, prefix + poly_table,
-                             " AND building ISNULL AND admin_level NOTNULL", name_tag)
-                checked0 = filter(check_adm, checked0)
+                checked0 = refine(checked, "admin_level NOTNULL")
+                checked0 = [it[0] for it in checked0 if check_adm(it[0])]
                 if len(checked0) != 0:
                     checked = checked0
 
             if len(checked) > 1 and 'place' in MultiChk():
-                checked0 = FindByName(pgeom, name, prefix + poly_table,
-                             " AND building ISNULL AND "
-                             "place IN ('city', 'town', 'village', 'hamlet', "
-                             "'suburb', 'quarter', 'neighbourhood')", name_tag)
-                checked0 = filter(check_adm, checked0)
+                checked0 = refine(checked, "place IN ('city', 'town', "
+                                  "'village', 'hamlet', 'suburb', 'quarter', "
+                                  "'neighbourhood')")
+                checked0 = [it[0] for it in checked0 if check_adm(it[0])]
                 if len(checked0) != 0:
                     checked = checked0
 
@@ -265,7 +266,7 @@ def FindAssocPlace(elem, pgeom):
                 elem.name = name
                 if poly_r is not None:
                     poly_r.add(osmid)
-                    return osmid
+                return osmid
 
 
 def FindAssocStreet(elem, pgeom):
@@ -276,9 +277,9 @@ def FindAssocStreet(elem, pgeom):
 
     session = elem.session
     for name in elem.names():
-        checked = FindByName(pgeom, name, prefix + ways_table,
+        checked = FindByName(pgeom, name, config.prefix + config.ways_table,
                              " AND highway NOTNULL")
-        checked = filter(check_street, checked)
+        checked = [it[0] for it in checked.fetchall() if check_street(it[0])]
         if checked:
             elem.name = name
             if way_r is not None:
@@ -287,8 +288,7 @@ def FindAssocStreet(elem, pgeom):
 
 
 def AssocBuild(elem, point, pgeom):
-    '''Search and save building association for elem
-    '''
+    '''Search and save building association for elem'''
     def check_bld(osmid):
         if point:
             if point_r is not None:
@@ -300,34 +300,43 @@ def AssocBuild(elem, point, pgeom):
 
     osm_h = AsyncQuery().\
         execute('SELECT osm_id, "addr:housenumber" FROM ' +
-                prefix + (point_table if point else poly_table) + ' WHERE ' +
+                config.prefix +
+                (config.point_table if point else config.poly_table) +
+                ' WHERE ' +
                 ('"addr:street"' if elem.kind == 1 else '"addr:place"') + '=%s'
                 ' AND ST_Within(way,%s) AND "addr:housenumber" IS NOT NULL',
                 (elem.name, pgeom))
     houses = elem.subB('not found_b')
     if not houses:
         return
+    houses = {h.onestr: h for h in houses}
     osm_h = osm_h.fetchall()
 
-    #Filtering of found is optimisation for updating
-    #and also remove POI with address
-    #found_pre = set([h.onestr for h in elem.subO('found_b')])
-    #osm_h = filter(lambda it: it[1] not in found_pre, osm_h)
+    # Filtering of found is optimisation for updating
+    # and also remove POI with address
+    # TODO: check for this filter...
+    # found_pre = set([h.onestr for h in elem.subO('found_b')])
+    # osm_h = filter(lambda it: it[1] not in found_pre, osm_h)
     for hid, number in osm_h:
-        for house in houses:
-            if house.equal_to_str(number) and check_bld(hid):
-                assoc = melt.BuildAssoc(house.houseid, hid, point)
-                house.osm = assoc
-                elem.session.add(assoc)
-                houses.remove(house)
-                if point:
-                    if point_r is not None:
-                        point_r.add(hid)
-                else:
-                    if poly_r is not None:
-                        poly_r.add(hid)
-
-                break
+        if not check_bld(hid):
+            continue
+        fh = houses.get(number, None)
+        if not fh:
+            for house in houses.values():
+                if house.equal_to_str(number):
+                    fh = house
+                    break
+        if fh:
+            assoc = melt.BuildAssoc(fh.houseid, hid, point)
+            fh.osm = assoc
+            elem.session.add(assoc)
+            houses.pop(fh.onestr)
+            if point:
+                if point_r is not None:
+                    point_r.add(hid)
+            else:
+                if poly_r is not None:
+                    poly_r.add(hid)
 
 
 def AssociateO(elem):
@@ -339,18 +348,18 @@ def AssociateO(elem):
     if not elem.kind:
         return
     geom_ = geom(elem)
-    #Precache subs list
-    # practically it's 'not found', filling others subs as side-effect
-    elem.subO('all', True)
-    #run processing for found to parse their subs
-    for sub in tuple(elem.subO('found', True)):
+    # Precache subs list
+    elem.subO('all', False)
+    # run processing for found to parse their subs
+    for sub in tuple(elem.subO('found', False)):
         AssociateO(melt.fias_AONode(sub))
-    #find new elements for street if any
-    for sub in tuple(elem.subO('street', True)):
+    # find new elements for street if any
+    for sub in tuple(elem.subO('street', False)):
         sub_ = melt.fias_AONode(sub)
         streets = FindAssocStreet(sub_, geom_.fetchone()[0])
         if streets is not None:
-            pre = elem.session.query(melt.StreetAssoc).filter_by(ao_id=sub.f_id).all()
+            pre = elem.session.query(melt.StreetAssoc).\
+                filter_by(ao_id=sub.f_id).all()
             pre = set([it.osm_way for it in pre])
             for street in streets:
                 if street not in pre:
@@ -358,9 +367,9 @@ def AssociateO(elem):
                     elem.session.add(assoc)
             elem.session.commit()
         AssociateO(sub_)
-    #search for new areas
+    # search for new areas
     subareas = Subareas(elem)
-    for sub in tuple(elem.subO('not found', True)):
+    for sub in tuple(elem.subO('not found', False)):
         if sub.fullname in way_only:
             continue
         sub_ = melt.fias_AONode(sub)
@@ -379,7 +388,7 @@ def AssociateO(elem):
             sub_.osmid = adm_id
             sub_.kind = 2
             AssociateO(sub_)
-    #search for new streets
+    # search for new streets
     for sub in tuple(elem.subO('not found', False)):
         if sub.fullname in pl_only:
             continue
@@ -394,7 +403,7 @@ def AssociateO(elem):
             sub_.kind = 1
             sub_.osmid = streets[0]
             AssociateO(sub_)
-    #Search for buildings
+    # Search for buildings
     AssocBuild(elem, 0, geom_.fetchone()[0])
     AssocBuild(elem, 1, geom_.fetchone()[0])
 
@@ -403,56 +412,39 @@ def AssociateO(elem):
     # elem.session.commit()
 
 
-def AssocRegion(guid):
-    region = melt.fias_AONode(guid)
+def AssocRegion(guid, session):
+    region = melt.fias_AONode(guid, session=session)
     logging.info(u"Start " + region.name)
     if not region.kind:
         adm_id = FindAssocPlace(region, None)
-        if adm_id != None:
+        if adm_id is not None:
             assoc = melt.PlaceAssoc(region.f_id, adm_id)
-            region.session.add(assoc)
-            region.session.commit()
+            session.add(assoc)
+            session.commit()
             region = melt.fias_AONode(guid, 2, adm_id)
 
     AssociateO(region)
-    region.session.commit()
+    session.commit()
     return u":".join((region.name, str(region.kind)))
 
 
-def AssORoot():
-    '''Associate and process federal subject (they have no parent id and no parent geom)
-    '''
-
+def AssORoot(session):
+    '''Associate and process federal subject'''
     logging.info("Here we go!")
-    InitPointR()
-    InitPolyR()
-    InitWayR()
+    InitPointR(session)
+    InitPolyR(session)
+    InitWayR(session)
     logging.info("Restriction cached")
-    for sub in AsyncQuery().fetchall("SELECT aoguid FROM fias_addr_obj "
-                                     "WHERE (parentid is Null) and "
-                                     "livestatus"):
-        passed = AssocRegion(sub[0])
+    for (i, sub) in enumerate(session.query(melt.Addrobj).
+                              filter_by(parentid=None, livestatus=True).all()):
+        passed = AssocRegion(sub, session)
         logging.info(passed)
-        AsyncQuery().execute("ANALYZE " + melt.BuildAssoc.__tablename__ + ";"
-                             "ANALYZE " + melt.PlaceAssoc.__tablename__ + ";"
-                             "ANALYZE " + melt.StreetAssoc.__tablename__ + ";")
-
-
-def AssORootM():
-    '''Associate and process federal subject (they have no parent id and no parent geom)
-    '''
-    from multiprocessing import Pool
-    pool = Pool()
-    results = []
-    for sub in AsyncQuery().fetchall("SELECT aoguid FROM fias_addr_obj "
-                                     "WHERE (parentid is Null) and "
-                                     "livestatus"):
-        results.append(pool.apply_async(AssocRegion, (sub[0],)))
-
-    while results:
-        result = results.pop(0)
-        print result.get()
-        print len(results)
+        logging.info(i)
+        if i % 3 == 0:
+            AsyncQuery().\
+                execute("ANALYZE " + melt.BuildAssoc.__tablename__ + ";"
+                        "ANALYZE " + melt.PlaceAssoc.__tablename__ + ";"
+                        "ANALYZE " + melt.StreetAssoc.__tablename__ + ";")
 
 
 if __name__ == "__main__":
@@ -468,13 +460,15 @@ if __name__ == "__main__":
         AssocBTableReCreate()
 #    AssocTriggersReCreate()
     StatTableReCreate()
+    s = sessionmaker(expire_on_commit=False,
+                     bind=create_engine(config.al_dsn,
+                                        pool_size=2))()
     if args.region:
-        r = AsyncQuery().fetchone("SELECT aoguid FROM fias_addr_obj "
-                                  "WHERE (parentid is Null) and "
-                                  "livestatus and regioncode=%s",
-                                  (args.region, ))
-        AssocRegion(r[0])
+        q = s.query(melt.Addrobj).filter_by(parentid=None,
+                                            livestatus=True,
+                                            regioncode=args.region)
+        AssocRegion(q.one())
     else:
-        AssORoot()
+        AssORoot(s)
     if args.allnew:
         AssocIdxCreate()
