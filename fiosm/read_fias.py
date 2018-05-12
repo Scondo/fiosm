@@ -563,6 +563,8 @@ def house_row(name, attrib):
     if name == 'House':
         now_row_ += 1
         attrib['HOUSEID'] = UUID(attrib.pop('HOUSEID'))
+        if not attrib.get('HOUSEID'):
+            return
         if upd:
             pbar.update(now_row + now_row_)
             old_h = session.query(House).\
