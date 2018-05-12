@@ -97,7 +97,7 @@ class Normdoc(FiasRow, Base):
 
 class Addrobj(FiasRow, Base):
     __tablename__ = 'fias_addr_obj'
-    aoguid = Column(GUID)
+    aoguid = Column(GUID, index=True)
     id = Column(Integer, primary_key=True)
     parentid = Column(Integer, ForeignKey('fias_addr_obj.id'), index=True)
     parent = relationship("Addrobj", remote_side=[id], uselist=False)
@@ -111,7 +111,7 @@ class Addrobj(FiasRow, Base):
     offname = Column(String(120))
     shortname = Column(String(10))
     aolevel = Column(SmallInteger)
-    #KLADE
+    # KLADE
     regioncode = deferred(Column(String(2)))
     autocode = deferred(Column(String(1)))
     areacode = deferred(Column(String(3)))
@@ -124,7 +124,7 @@ class Addrobj(FiasRow, Base):
     # KLADR
     code = Column(String(17))
     plaincode = deferred(Column(String(15)))
-    #NALOG
+    # NALOG
     postalcode = deferred(Column(String(6)))
     ifnsfl = deferred(Column(String(4)))
     terrifnsfl = deferred(Column(String(4)))
@@ -142,31 +142,6 @@ class Addrobj(FiasRow, Base):
     cadnum = deferred(Column(String(100)))
     divtype = Column(SmallInteger, default=0)
     livestatus = Column(Boolean, index=True)
-
-
-class HouseInt(FiasRow, Base):
-    __tablename__ = 'fias_houseint'
-    intguid = Column(GUID, primary_key=True)
-    houseintid = Column(GUID)
-    startdate = Column(Date, default=date(1900, 1, 1))
-    enddate = Column(Date, default=date(2100, 1, 1))
-
-    postalcode = deferred(Column(String(6)))
-    ifnsfl = deferred(Column(String(4)))
-    terrifnsfl = deferred(Column(String(4)))
-    ifnsul = deferred(Column(String(4)))
-    terrifnsul = deferred(Column(String(4)))
-    okato = deferred(Column(String(11)))
-    oktmo = deferred(Column(String(11)))
-
-    updatedate = deferred(Column(Date, default=date(1900, 1, 1)))
-
-    ao_id = Column(Integer, index=False)
-    normdoc = deferred(Column(GUID))
-    intstart = Column(Integer, index=False)
-    intend = Column(Integer, index=False)
-    intstatus = Column(SmallInteger)
-    counter = deferred(Column(Integer))
 
 
 class House(FiasRow, Base):

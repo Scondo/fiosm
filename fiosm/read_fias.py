@@ -9,18 +9,18 @@ from sqlalchemy.orm.persistence import BulkUpdateFetch
 try:
     from urllib import urlretrieve
     from urllib import urlcleanup
-except:
+except ImportError:
     from urllib.request import urlretrieve
     from urllib.request import urlcleanup
 try:
     from urllib2 import URLError
-except:
+except ImportError:
     from urllib.error import URLError
 from os.path import exists
 from os import remove
 import rarfile
 import fias_db
-from fias_db import House, HouseInt, Addrobj, Normdoc
+from fias_db import House, Addrobj, Normdoc
 from uuid import UUID
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -52,13 +52,14 @@ def strpdate(string, fmt):
 
 today = date.today()
 
-updating = ("normdoc", "addrobj", "socrbase", "houseint", "house")
+updating = ("normdoc", "addrobj", "socrbase", "house")
 Session = sessionmaker()
 session = Session()
 upd = False
 now_row = 0
 now_row_ = 0
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
+
 
 # Very dirty hack
 def do_executemany_patched(self, cursor, statement, parameters, context=None):
@@ -94,7 +95,10 @@ class AsyncRarServ(multiprocessing.Process):
         self.queue = ctx.Queue(10)
         self.fin = ctx.Event()
         self.go = ctx.Event()
-        self.size = ctx.SimpleQueue()
+        try:
+            self.size = ctx.SimpleQueue()
+        except:
+            self.size = ctx.queues.SimpleQueue()
 
     def run(self):
         rar = rarfile.RarFile(self.src)
@@ -218,6 +222,7 @@ class FiasFiles(object):
                 self.get_fullarch(ver - 1)
 
     def get_fullfile(self, table):
+        logging.warn("Wanna full " + table)
         self.get_fullarch()
         arch = rarfile.RarFile(self.full_file)
         for filename in arch.namelist():
@@ -225,7 +230,7 @@ class FiasFiles(object):
                 fdate = strpdate(filename.split("_")[2], "%Y%m%d")
                 if self.full_ver is None:
                     rec = session.query(fias_db.Versions).\
-                            filter_by(date=fdate).first()
+                        filter_by(date=fdate).first()
                     if rec is None:
                         self.full_ver = 0  # TODO: search by dumpdate
                     else:
@@ -392,16 +397,17 @@ AoGuidId = GuidId('aoguid', fias_db.Addrobj, True)
 
 def addr_cmp(dic, rec):
     if rec.aoid is None:
-        #Dummy always should be replaced
+        # Dummy always should be replaced
         return True
     if dic['AOID'] == rec.aoid:
-        #New rec is always better
+        # New rec is always better
         return True
     if dic['UPDATEDATE'] > rec.updatedate:
         return True
     if dic['STARTDATE'] > rec.startdate:
         return True
     return False
+
 
 count_max = 0
 count_tag = None
@@ -434,24 +440,26 @@ def generate_bind_ins(table, n):
 
 
 # nd_ins = generate_bind_ins(Normdoc.__table__, 1000)
+def normdoc_dic(attrib):
+    attrib['normdocid'] = UUID(int=long(attrib.pop('NORMDOCID').
+                                        replace('-', ''), 16))
+    docdate = attrib.pop('DOCDATE', None)
+    rec = dict([(it[0].lower(), it[1]) for it in attrib.items()])
+    if docdate:
+        rec['docdate'] = date(*[int(it) for it in docdate.split('-')])
+    else:
+        rec['docdate'] = None
+    for key in ('docname', 'docnum', 'doctype', 'docimgid'):
+        rec.setdefault(key, None)
+    return rec
 
 
 def normdoc_row(name, attrib):
     global now_row, now_row_, bulk
     if name == "NormativeDocument":
         now_row_ += 1
-        attrib['normdocid'] = UUID(int=long(attrib.pop('NORMDOCID').
-                                            replace('-', ''), 16))
-        docdate = attrib.pop('DOCDATE', None)
-        rec = dict([(it[0].lower(), it[1]) for it in attrib.items()])
-        if docdate:
-            rec['docdate'] = date(*[int(it) for it in docdate.split('-')])
-        else:
-            rec['docdate'] = None
-        for key in ('docname', 'docnum', 'doctype', 'docimgid'):
-            rec.setdefault(key, None)
         # rec = Normdoc(rec)
-        bulk.append(rec)
+        bulk.append(normdoc_dic(attrib))
     if now_row_ == 10000 or name is None:
         now_row = now_row + now_row_
         now_row_ = 0
@@ -463,10 +471,10 @@ def normdoc_row_upd(name, attrib):
     if name == "NormativeDocument":
         pbar.update(now_row + now_row_)
         old_doc = session.query(Normdoc).get(attrib['NORMDOCID'])
-        if old_doc:  # May be update will be better???
-            session.delete(old_doc)
-            session.flush()
-    normdoc_row(name, attrib)
+        if old_doc:
+            old_doc.fromdic(normdoc_dic(attrib))
+        else:
+            normdoc_row(name, attrib)
 
 
 def socr_obj_row(name, attrib):
@@ -484,13 +492,13 @@ def addr_obj_row(name, attrib):
                 AoGuidId.precache(pre_list[:100])
                 pre_list = pre_list[100:]
         if 'NEXTID' in attrib:
-            #If one have successor - it's dead
-            attrib['LIVESTATUS'] = '0'
-        if not upd and attrib.get('LIVESTATUS', '0') != '1':
-            #On first pass we can skip all dead,
-            #on update they will disable current
+            # If one have successor - it's dead
+            attrib['LIVESTATUS'] = False
+        attrib['LIVESTATUS'] = attrib.get('LIVESTATUS', '0') == '1'
+        if not upd and not attrib['LIVESTATUS']:
+            # On first pass we can skip all dead,
+            # on update they will disable current
             return
-
         if 'NORMDOC' in attrib:
             attrib['NORMDOC'] = UUID(int=long(attrib.pop('NORMDOC').
                                               replace('-', ''), 16))
@@ -596,86 +604,6 @@ def house_row(name, attrib):
         bulk.append(rec)
 
 
-def houseint_row(name, attrib):
-    global upd, pushed_hous, passed_houses
-
-    if name == 'HouseInterval':
-        if upd:
-            session.query(HouseInt).filter_by(
-                houseintid=attrib['HOUSEINTID']).delete()
-
-        ed = attrib.pop('ENDDATE').split('-')
-        enddate = date(int(ed[0]), int(ed[1]), int(ed[2]))
-        sd = attrib.pop('STARTDATE').split('-')
-        startdate = date(int(sd[0]), int(sd[1]), int(sd[2]))
-        ud = attrib.pop('UPDATEDATE').split('-')
-        updatedate = date(int(ud[0]), int(ud[1]), int(ud[2]))
-        updatedateo = updatedate.toordinal()
-        guid = UUID(attrib.pop("INTGUID"))
-        guid_i = guid.int
-        if passed_houses.get(guid_i, 0) > updatedateo:
-            return
-        else:
-            strange = (passed_houses.get(guid_i, 0) == updatedateo)
-        strange = strange or (startdate >= enddate)
-        rec = pushed_hous.get(guid_i, None)
-
-        if (not strange) and (enddate < today) and\
-                (rec is None or rec.updatedate <= updatedate):
-            if rec is not None:
-                session.flush()
-                pushed_hous.pop(guid_i)
-                session.flush()
-                session.delete(rec)
-            return
-
-        normdoc = attrib.pop('NORMDOC', None)
-        attrib['ao_id'] = AoGuidId.getid(long(attrib.pop('AOGUID').
-                                              replace('-', ''), 16), False)
-        if attrib['ao_id'] is None:
-            return
-
-        if (strange or (startdate >= today) or upd or
-                (guid_i in passed_houses)) and (rec is None):
-            # If house is 'future' check if that already in DB
-            # Other houses should not be in DB:
-            # 'past' houses are skipped and current is only one
-            rec = session.query(HouseInt).get(guid)
-
-        if rec is None:
-            rec = fias_db.HouseInt(attrib)
-            rec.intguid = guid
-            session.add(rec)
-        else:
-            if is_h_better(rec, attrib,
-                           startdate, enddate, updatedate):
-                attrib.setdefault('IFNSFL', None)
-                attrib.setdefault('TERRIFNSFL', None)
-                attrib.setdefault('IFNSUL', None)
-                attrib.setdefault('TERRIFNSUL', None)
-
-                attrib.setdefault('POSTALCODE', None)
-                attrib.setdefault('OKTMO', None)
-                attrib.setdefault('OKATO', None)
-
-                attrib.setdefault('HOUSENUM', None)
-                attrib.setdefault('BUILDNUM', None)
-                attrib.setdefault('STRUCNUM', None)
-                rec.fromdic(attrib)
-            else:
-                return
-        rec.enddate = enddate
-        rec.startdate = startdate
-        rec.updatedate = updatedate
-        if normdoc:
-            rec.normdoc = UUID(normdoc)
-        passed_houses[guid_i] = updatedateo
-        if strange:
-            pushed_hous[guid_i] = rec
-        else:
-            pushed_hous.pop(guid_i, None)
-
-
 def UpdateTable(table, fil, engine=None):
     global upd, pushed_rows, now_row, now_row_, pbar
     if fil is None:
@@ -727,11 +655,6 @@ def UpdateTable(table, fil, engine=None):
             House.__table__.drop(engine)
             House.__table__.create(engine)
         p.StartElementHandler = house_row
-    elif table == 'houseint':
-        if not upd:
-            HouseInt.__table__.drop(engine)
-            HouseInt.__table__.create(engine)
-        p.StartElementHandler = houseint_row
     p.ParseFile(fil)
     AoGuidId.flush_cache()
     pushed_hous = {}
@@ -743,13 +666,14 @@ def UpdateTable(table, fil, engine=None):
         logging.info("Index and cluster")
         if table == 'house':
             engine.execute("CREATE INDEX parent ON fias_house "
-                           "USING btree (ao_id)")
+                           "USING btree (ao_id) WITH (fillfactor = 97)")
             engine.execute("CREATE INDEX idx_houseid ON fias_house "
-                           "USING btree (houseid)")
+                           "USING btree (houseid) WITH (fillfactor = 97)")
             engine.execute("CLUSTER fias_house USING parent")
         elif table == 'addrobj':
             engine.execute("CLUSTER fias_addr_obj "
                            "USING ix_fias_addr_obj_parentid")
+
     logging.info(table + " imported")
 
 
@@ -796,7 +720,7 @@ if __name__ == "__main__":
                                        "public.planet_osm_fias_place")
                         engine.execute("DROP TABLE "
                                        "public.planet_osm_fias_street")
-                    elif tabl == "house" or tabl == "houseint":
+                    elif tabl == "house":
                         engine.execute("DROP TABLE "
                                        "public.planet_osm_fias_build")
                 except:
@@ -814,7 +738,8 @@ if __name__ == "__main__":
     if not args.onlyfull:
         upd = True
         for ver in range(minver + 1, FiasFiles().maxver() + 1):
-            logging.info("Update " + str(ver) + " of " + str(FiasFiles().maxver()))
+            logging.info("Update " + str(ver) +
+                         " of " + str(FiasFiles().maxver()))
             for tabl in updating:
                 my = sess.query(fias_db.TableStatus).\
                     filter_by(tablename=tabl).first()
