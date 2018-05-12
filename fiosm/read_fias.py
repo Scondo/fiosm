@@ -5,7 +5,6 @@ import xml.parsers.expat
 import datetime
 from datetime import date
 import logging
-from sqlalchemy.orm.persistence import BulkUpdateFetch
 try:
     from urllib import urlretrieve
     from urllib import urlcleanup
@@ -60,24 +59,6 @@ now_row = 0
 now_row_ = 0
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 
-
-# Very dirty hack
-def do_executemany_patched(self, cursor, statement, parameters, context=None):
-    ins = False
-    if statement[:6].lower() == 'insert':
-        p = statement.find('VALUES')
-        if p == -1:
-            p = statement.find('values')
-        if p != -1:
-            records_list_template = ','.join(['%s' for t in parameters])
-            statement_ = statement[:p + 7] + records_list_template
-            cursor.execute(statement_, parameters)
-            ins = True
-    if not ins:
-        cursor.executemany(statement, parameters)
-
-from sqlalchemy.engine.default import DefaultDialect
-DefaultDialect.do_executemany = do_executemany_patched
 
 import multiprocessing
 import io
@@ -463,7 +444,7 @@ def normdoc_row(name, attrib):
     if now_row_ == 10000 or name is None:
         now_row = now_row + now_row_
         now_row_ = 0
-        session.execute(Normdoc.__table__.insert(), bulk)
+        session.execute(Normdoc.__table__.insert().values(bulk))
         bulk = []
 
 
@@ -557,7 +538,7 @@ def house_row(name, attrib):
     if now_row_ == 10000 or name is None:
         now_row = now_row + now_row_
         now_row_ = 0
-        session.execute(House.__table__.insert(), bulk)
+        session.execute(House.__table__.insert().values(bulk))
         bulk = []
 
     if name == 'House':
