@@ -550,9 +550,8 @@ def house_row(name, attrib):
             pbar.update(now_row + now_row_)
             old_h = session.query(House).\
                 filter_by(houseid=attrib['HOUSEID']).first()
-            if old_h:
-                session.delete(old_h)
-                session.flush()
+        else:
+            old_h = None
 
         enddate = date(*[int(it)
                          for it in attrib.pop('ENDDATE').split('-')])
@@ -566,8 +565,12 @@ def house_row(name, attrib):
         strange = startdate >= enddate
         if (not strange) and (enddate < today):
             # Obviously obsolete data
+            if old_h:
+                session.delete(old_h)
             return
         if attrib['ao_id'] is None:
+            if old_h:
+                session.delete(old_h)
             return
 
         houseguid = UUID(attrib.pop('HOUSEGUID'))
@@ -584,7 +587,10 @@ def house_row(name, attrib):
 
         for key in house_cols:
             rec.setdefault(key, None)
-        bulk.append(rec)
+        if old_h:
+            old_h.fromdic(rec)
+        else:
+            bulk.append(rec)
 
 
 def UpdateTable(table, fil, engine=None):
