@@ -456,6 +456,8 @@ def normdoc_row_upd(name, attrib):
             old_doc.fromdic(normdoc_dic(attrib))
         else:
             normdoc_row(name, attrib)
+    elif name is None:
+        normdoc_row(name, attrib)
 
 
 def socr_obj_row(name, attrib):
