@@ -503,34 +503,8 @@ def addr_obj_row(name, attrib):
             AoGuidId.flush_cache()
             session.flush()
 
-# Keys are guid integers, values are update dates ordinal
-passed_houses = {}
-# Keys are guids, values are records
-pushed_hous = {}
 
 house_cols = list(House().collist())
-
-def is_h_better(rec, attrib, sdate, edate, udate):
-    if rec.updatedate < udate:
-        return True
-    elif rec.updatedate > udate:
-        return False
-
-    if rec.startdate < sdate:
-        return True
-    elif rec.startdate > sdate:
-        return False
-
-    if rec.enddate < edate:
-            return True
-    elif rec.enddate > edate:
-            return False
-
-    if rec.divtype == 0 and attrib.get('DIVTYPE', '0') != '0':
-            return True
-    elif rec.divtype != 0 and attrib.get('DIVTYPE', '0') == '0':
-            return False
-    return True
 
 
 def house_row(name, attrib):
@@ -646,7 +620,6 @@ def UpdateTable(table, fil, engine=None):
         p.StartElementHandler = house_row
     p.ParseFile(fil)
     AoGuidId.flush_cache()
-    pushed_hous = {}
     p.StartElementHandler(None, None)
     session.commit()
     session.expunge_all()
