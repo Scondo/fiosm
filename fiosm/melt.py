@@ -408,6 +408,7 @@ class fias_AO(object):
         for ao in self.subO('street'):
             res += ao.stat(typ[:-2])
         self._stat[typ] = res + self.stat(typ[:-2])
+        return self._stat[typ]
 
     @property
     def stat_db_full(self):
@@ -462,7 +463,7 @@ class fias_AO(object):
             if not (('all' + b + r) in self._stat) and self.guid is not None:
                 self.pullstatA()
 
-            if r and ('all' + b not in self._stat):
+            if r and ('all' + b + r not in self._stat):
                 self.CalcRecStat(typ, savemode)
             return self.stat('all' + b + r) -\
                 (self.stat('found_b' + r) if b else self.stat('all_found' + r))
@@ -501,8 +502,8 @@ class fias_AO(object):
         f = mode == 2 and a and b and ar and br
         statR = self.fias.stat
         if statR is None:
-            # multithread backup
-            self.session.query(Statistic).get(self.f_id)
+            # multithread workaround
+            statR = self.session.query(Statistic).get(self.f_id)
         if statR is None:
             if a or b or ar or br:
                 statR = Statistic({"ao_id": self.f_id})
@@ -597,7 +598,6 @@ class fias_AONode(fias_AO):
             names = dict(names)
             for obj in objs:
                 obj._name = names[obj.osmid]
-                #logging.info(names)
 
         if typ in self._subO:
             if pullnames and typ in ('found', 'street'):
@@ -615,7 +615,6 @@ class fias_AONode(fias_AO):
             elif typ == 'not found' and config.use_osm:
                 q = q.options(joinedload(Addrobj.street))
                 q = q.options(joinedload(Addrobj.place))
-                #q = q.filter(~Addrobj.street.any(), ~Addrobj.place.has())
             if typ == 'not found':
                 self._subO['street'] = []
                 self._subO['found'] = []
