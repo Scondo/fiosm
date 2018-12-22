@@ -44,7 +44,7 @@ class AQuery(object):
                     #        fut.fetchall()
                     return conn
                 elif firstpass:
-                    firstpass = False
+                    pass
                 elif state == POLL_READ:
                     select.select([conn.fileno()], [], [], timeout)
                 elif state == POLL_WRITE:
@@ -52,6 +52,7 @@ class AQuery(object):
                 else:
                     raise conn.OperationalError("bad state from poll: %s" %
                                                 state)
+            firstpass = False
 
     def execute(self, query, params=None):
         if (query, params) in self.cache:
@@ -220,6 +221,8 @@ def FindByName(pgeom, name, tbl=config.prefix + config.ways_table,
 
 
 def FindAssocPlace(elem, pgeom):
+    session = elem.session
+
     def check_adm(osmid):
         if poly_r is not None:
             return osmid not in poly_r
@@ -231,7 +234,6 @@ def FindAssocPlace(elem, pgeom):
                                     " WHERE osm_id IN %s AND " + addcond,
                                     (tuple(id_list),)).fetchall()
 
-    session = elem.session
     for name in elem.names():
         checked_all = [FindByName(pgeom, name,
                                   config.prefix + config.poly_table,
@@ -270,12 +272,13 @@ def FindAssocPlace(elem, pgeom):
 
 
 def FindAssocStreet(elem, pgeom):
+    session = elem.session
+
     def check_street(osmid):
         if way_r is not None:
             return osmid not in way_r
         return session.query(melt.StreetAssoc).get(osmid) is None
 
-    session = elem.session
     for name in elem.names():
         checked = FindByName(pgeom, name, config.prefix + config.ways_table,
                              " AND highway NOTNULL")
