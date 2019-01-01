@@ -465,7 +465,8 @@ if __name__ == "__main__":
     StatTableReCreate()
     s = sessionmaker(expire_on_commit=False,
                      bind=create_engine(config.al_dsn,
-                                        pool_size=2))()
+                                        pool_size=2,
+                                        use_batch_mode=True))()
     if args.region:
         q = s.query(melt.Addrobj).filter_by(parentid=None,
                                             livestatus=True,
