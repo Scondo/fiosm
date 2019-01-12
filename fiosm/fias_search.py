@@ -133,7 +133,7 @@ def geom(AO):
                                    config.prefix + config.poly_table +
                                    " WHERE osm_id=%s", (AO.osmid,))
     elif AO.kind == 1:
-        res = AsyncQuery().execute("SELECT St_Buffer(ST_Union(w.way),2000) "
+        res = AsyncQuery().execute("SELECT ST_Union(St_Buffer(w.way,2000)) "
             "FROM " + config.prefix + config.ways_table + " w"
             ", " + config.prefix + config.way_aso_tbl + " s "
             "WHERE s.osm_way=w.osm_id AND s.ao_id=%s", (AO.f_id,))
