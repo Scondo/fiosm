@@ -514,6 +514,8 @@ def house_row(name, attrib):
     if now_row_ == 10000 or name is None:
         now_row = now_row + now_row_
         now_row_ = 0
+        session.flush()
+        #logging.warn(bulk)
         session.execute(House.__table__.insert().values(bulk))
         bulk = []
 
@@ -563,6 +565,8 @@ def house_row(name, attrib):
 
         for key in house_cols:
             rec.setdefault(key, None)
+        rec.pop('regioncode', None)
+        rec.pop('REGIONCODE', None)
         if old_h:
             old_h.fromdic(rec)
         else:
