@@ -9,7 +9,7 @@ from sqlalchemy import Sequence, Column, ForeignKey, MetaData
 from sqlalchemy.orm.properties import ColumnProperty
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import deferred, relationship
-from sqlalchemy.orm import object_mapper
+from sqlalchemy.orm import object_mapper, object_session
 from datetime import date
 
 from sqlalchemy.types import TypeDecorator, CHAR
@@ -182,6 +182,16 @@ class House(FiasRow, Base):
             _str = _str + u'с' + self.strucnum + space
         return _str[:(-1 * len(space))]
 
+    def makeonestr2(self, space=u' '):
+        _str = u''
+        if self.housenum:
+            _str = _str + self.housenum + space
+        if self.buildnum:
+            _str = _str + u'корп ' + self.buildnum + space
+        if self.strucnum:
+            _str = _str + u'стр ' + self.strucnum + space
+        return _str[:(-1 * len(space))]
+
     @property
     def onestr(self):
         return self.makeonestr()
@@ -193,8 +203,20 @@ class House(FiasRow, Base):
     def equal_to_str(self, guess):
         if self.onestr.lower() == guess.lower():
             return True
-        if self.makeonestr('').lower() == guess.lower():
+        if self.makeonestr(u'').lower() == guess.lower():
             return True
+        if self.housenum.lower() == guess.lower():
+            # Петербург и прочие у кого 1 строение и мапят без строений
+            if object_session(self).query(self).\
+                    filter_by(ao_id=self.ao_id,
+                              housenum=self.housenum).count() == 1:
+                return True
+        if self.makeonestr2(u'').lower() == guess.lower():
+            return True
+        if self.makeonestr2(u' ').lower() == guess.lower():
+            return True
+        if u'/' in guess:
+            return equal_to_str(guess.split(u'/')[0])
         return False
 
 
