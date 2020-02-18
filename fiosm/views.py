@@ -6,6 +6,7 @@ from pyramid.httpexceptions import HTTPBadRequest, HTTPNotFound
 import melt
 import fias_db
 import uuid
+import json
 import logging
 from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy import create_engine
@@ -35,6 +36,59 @@ def node4guid(guid=None):
     return melt.fias_AONode(guid, session=Session())
 
 
+@view_config(route_name='json_search', renderer='json',
+             http_cache=(3600, {'public': True}))
+def json_search(request):
+    """Find FIAS address objects by parameter"""
+    return_limit = 100
+    session = Session()
+    filter_by = request.params.mixed()
+    # Правим слетевшие заголовки
+    if len(filter_by) == 1:
+        t =list(filter_by.keys())[0]
+        if t[0] == "{":
+            filter_by = json.loads(t)
+    logging.warn(filter_by)
+    if not filter_by:
+        filter_by = {'parentid': None}
+    elif filter_by['parentid'] == 'None':
+        filter_by['parentid'] = None
+    elif 'parentid' in filter_by:
+        if filter_by['parentid'].isdecimal():
+            filter_by['parentid'] = int(filter_by['parentid'])
+        else:
+            p = uuid.UUID(filter_by['parentid'])
+            p = session.query(fias_db.Addrobj).filter_by(aoguid=p).one()
+            filter_by['parentid'] = p.id
+    name_like = filter_by.pop('name_like', None)
+    # Validate filter
+    cols = set(fias_db.Addrobj({'id': -1}).collist())
+    for key in list(filter_by):
+        if key not in cols:
+            del filter_by[key]
+    # Force skip abandoned data
+    filter_by['livestatus'] = True
+    q = session.query(fias_db.Addrobj).filter_by(**filter_by)
+    if name_like:
+        # TODO: check MSSQL
+        q = q.filter(fias_db.Addrobj.formalname.ilike(name_like))
+    if q.count() > return_limit:
+        return "Too big list"
+    else:
+        res = []
+        for one in q.all():
+            ao = melt.fias_AO(one, session=session)
+            one_ = dict(formalname=one.formalname,
+                        shortname=one.shortname,
+                        aolevel=one.aolevel,
+                        name=ao.name,
+                        fullname=ao.fullname,
+                        aoguid=str(one.aoguid)
+                        )
+            res.append(one_)
+        return res
+
+
 @view_config(route_name='json_full', renderer='json',
              http_cache=(3600, {'public': True}))
 def json_full_view(request):
@@ -50,6 +104,9 @@ def json_full_view(request):
             res['parentname'] = myself.parent.name
     else:
         res = dict()
+        res['kind'] = myself.kind
+        res['name'] = myself.name
+
     return res
 
 
@@ -73,7 +130,7 @@ def json_subb_view(request):
     def bld2dict(bld):
         res = {'name': bld.name}
         res['guid'] = bld.houseguid
-        if bld.osm:
+        if hasattr(bld, 'osm') and bld.osm:
             res['osmid'] = bld.osm.osm_build
             res['point'] = bld.osm.point
         return res
@@ -109,6 +166,7 @@ def json_build_view(request):
         bld_guid = uuid.UUID(build_text)
         build = Session().query(fias_db.House).\
             filter_by(houseguid=bld_guid).one()
+        # TODO: filter best level!
     except ValueError:
         build = None
     # Search by AO and string
@@ -126,13 +184,8 @@ def json_build_view(request):
 
 @view_config(route_name='details', renderer='templates/details.pt')
 def details_view(request):
-    #Make check for malformed guid
-    try:
-        guid = uuid.UUID(request.matchdict["guid"])
-    except ValueError:
-        raise HTTPBadRequest()
-    myself = melt.fias_AONode(guid)
-    statlink = request.route_url('found0', guid=guid, typ='all')
+    myself = node4guid(request.matchdict["guid"])
+    statlink = request.route_url('found0', guid=myself.guid, typ='all')
     return {"myself": myself, "statlink": statlink, "name": myself.name}
 
 
@@ -162,7 +215,7 @@ def found_view(request):
         except ValueError:
             raise HTTPBadRequest()
     #Make check for area exist
-    myself = melt.fias_AONode(guid)
+    myself = melt.fias_AONode(guid, session=Session())
     if guid and not myself.isok:
         raise HTTPNotFound()
 
@@ -219,6 +272,6 @@ def rest_buildings_view(request):
         ao_guid = uuid.UUID(request.matchdict["ao_guid"])
     except ValueError:
         raise HTTPBadRequest()
-    myself = melt.fias_AO(ao_guid)
+    myself = melt.fias_AO(ao_guid, session=Session())
     request.response.content_type = 'text/xml'
     return {"list": myself.subB('all_b')}
