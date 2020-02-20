@@ -216,7 +216,7 @@ class House(FiasRow, Base):
         if self.makeonestr2(u' ').lower() == guess.lower():
             return True
         if u'/' in guess:
-            return equal_to_str(guess.split(u'/')[0])
+            return self.equal_to_str(guess.split(u'/')[0])
         return False
 
 
