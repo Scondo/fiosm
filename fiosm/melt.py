@@ -5,7 +5,7 @@ import logging
 import nice_street
 import config
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, object_session
 from sqlalchemy.orm import relationship, backref, joinedload
 from sqlalchemy import ForeignKey, Column, Integer, BigInteger, SmallInteger
 from sqlalchemy import Table
@@ -21,6 +21,12 @@ socr_cache = {}
 
 
 if config.use_osm:
+    import geoalchemy2
+
+    class ST_GeneratePoints(geoalchemy2.functions.GenericFunction):
+        name = 'ST_GeneratePoints'
+        type = geoalchemy2.Geometry
+
     util_engine = create_engine(config.al_dsn, pool_size=2, pool_recycle=180)
     PolyTable = Table(config.prefix + config.poly_table, FiasMeta,
                       autoload=True, autoload_with=util_engine)
@@ -132,9 +138,32 @@ def HouseTXTKind(self):
 if config.use_osm:
     House.txtkind = property(HouseTXTKind)
     House.osmlink = property(HouseOSMLink)
+
+    def repr_point(self):
+        def parent():
+            fias = object_session(self).query(Addrobj).get(self.ao_id)
+            _parentO = fias_AO(fias.aoguid)
+            _parentO._fias = self.fias
+            return _parentO
+
+        if self.osm is None:
+            return tuple(parent().repr_point[:2]) + (False,)
+        elif self.osm.point == 1:
+            q = object_session(self).query(PointTable.c.way.label("geom")).\
+                filter(PointTable.c.osm_id == self.osm.osm_build).subquery()
+        elif self.osm.point == 0:
+            q = object_session(self).query(PolyTable.c.way.
+                                           ST_Centroid().label("geom")).\
+                filter(PolyTable.c.osm_id == self.osm.osm_build).subquery()
+        r = object_session(self).query(q.c.geom.ST_Transform(4326).ST_Y(),
+                                       q.c.geom.ST_Transform(4326).ST_X()).one()
+        return(tuple(r), -1, True)
+    House.repr_point = property(repr_point)
+
 else:
     House.txtkind = u'ОСМ отключен'
     House.osmlink = u''
+    House.repr_point = ((0, 0), 0, False)
 
 
 class fias_AO(object):
@@ -224,6 +253,37 @@ class fias_AO(object):
         elif self.kind == 2:
             return u'территория'
 
+    @property
+    def repr_point(self):
+      try:
+        if not config.use_osm or self.fias.aolevel == -1000:
+            return ((0, 0), 0, False)  # Вернуть точку России?
+        if self.kind == 0:
+            return tuple(self.parent.repr_point[:2]) + (False, )
+        elif self.kind == 2:
+            q = self.session.query(PolyTable.c.way.
+                                   ST_Union().ST_Centroid().label("geom")).\
+                filter(PolyTable.c.osm_id == self.osmid).subquery()
+        elif self.kind == 1:
+            qway = self.session.query(WaysTable.c.way.
+                                      ST_Union().label("geom")).\
+                filter(WaysTable.c.osm_id == StreetAssoc.osm_way).\
+                filter(StreetAssoc.ao_id == self.f_id).subquery()
+            chk = self.session.query(qway.c.geom.ST_Centroid().
+                                     ST_DWithin(qway.c.geom, 5)).one()
+            if chk:
+                q = self.session.query(qway.c.geom.ST_Centroid().label("geom")
+                                       ).subquery()
+            else:
+                q = self.session.query(qway.c.geom.ST_Buffer(5).
+                                       ST_GeneratePoints(1).label("geom")
+                                       ).subquery()
+        r = self.session.query(q.c.geom.ST_Transform(4326).ST_Y(),
+                               q.c.geom.ST_Transform(4326).ST_X()).one()
+        return(tuple(r), self.aolevel, True)
+      except AttributeError as e:
+          raise ValueError(str(e))
+
     def getFiasData(self):
         if self._guid:
             self._fias = self.session.query(Addrobj).\
@@ -237,7 +297,7 @@ class fias_AO(object):
                 filter_by(osm_way=self._osmid).first()
             self._fias = a.fias
         else:
-            self._fias = Addrobj({'formalname': 'Россия'})
+            self._fias = Addrobj({'formalname': 'Россия', 'aolevel': -1000})
 
     @property
     def fias(self):

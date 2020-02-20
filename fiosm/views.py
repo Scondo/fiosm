@@ -21,6 +21,7 @@ Session = scoped_session(sessionmaker(bind=engine))
 def add_global(event):
     Session.remove()
 
+
 off_border = 100
 
 
@@ -45,7 +46,7 @@ def json_search(request):
     filter_by = request.params.mixed()
     # Правим слетевшие заголовки
     if len(filter_by) == 1:
-        t =list(filter_by.keys())[0]
+        t = list(filter_by.keys())[0]
         if t[0] == "{":
             filter_by = json.loads(t)
     logging.warn(filter_by)
@@ -104,9 +105,9 @@ def json_full_view(request):
             res['parentname'] = myself.parent.name
     else:
         res = dict()
-        res['kind'] = myself.kind
-        res['name'] = myself.name
-
+    res['kind'] = myself.kind
+    res['name'] = myself.name
+    res['repr_point'] = myself.repr_point
     return res
 
 
@@ -179,7 +180,9 @@ def json_build_view(request):
     # Split by ~
     if build is None:
         raise HTTPNotFound()
-    return build.asdic()
+    res = build.asdic()
+    res['repr_point'] = build.repr_point
+    return res
 
 
 @view_config(route_name='details', renderer='templates/details.pt')
