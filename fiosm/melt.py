@@ -57,6 +57,10 @@ if config.use_osm:
         def all(self):
             return self.ao_all
 
+        @all.setter
+        def all(self, value):
+            self.ao_all = value
+
         def fromdic(self, dic):
             for it in dic.iteritems():
                 setattr(self, 'ao_all' if it[0] == 'all' else it[0], it[1])
@@ -142,8 +146,8 @@ if config.use_osm:
     def repr_point(self):
         def parent():
             fias = object_session(self).query(Addrobj).get(self.ao_id)
-            _parentO = fias_AO(fias.aoguid)
-            _parentO._fias = self.fias
+            _parentO = fias_AO(fias)
+            #  _parentO._fias = fias
             return _parentO
 
         if self.osm is None:
@@ -174,6 +178,8 @@ class fias_AO(object):
         if isinstance(guid, Addrobj):
             self._fias = guid
             self._guid = None
+            if session is None:
+                session = object_session(guid)
         else:
             self._guid = guid
             self._fias = None
@@ -187,8 +193,12 @@ class fias_AO(object):
         self._osmkind = None
         self.setkind(kind)
         self._parent = parent
-        self._stat = {}
         self._subB = None  # cache all buildings
+
+    def __del__(self):
+        if self.fias.stat is not None:
+            # Only reason for now is try to update statistic
+            self.session.commit()
 
     @property
     def guid(self):
@@ -342,11 +352,13 @@ class fias_AO(object):
     def names(self, formal=None):
         if formal is None:
             was = set()
+            # nice
             for name in nice_street.nice(self.formalname, self.fias.shortname,
                                     self.fullname, self.kind == 2):
                 if name not in was:
                     yield name
                     was.add(name)
+            # bruteforce
             if not(self.fias.formalname is None):
                 for name in self.names(self.formalname):
                     if name not in was:
@@ -368,6 +380,11 @@ class fias_AO(object):
             yield self.fullname + " " + formal
             yield formal + " " + self.fullname
             yield formal
+            if self.fias.shortname is not None:
+                yield self.fias.shortname + " " + formal
+                yield formal + " " + self.fias.shortname
+                yield self.fias.shortname.strip('.') + " " + formal
+                yield formal + " " + self.fias.shortname.strip('.')
 
     @property
     def parentguid(self):
@@ -430,17 +447,21 @@ class fias_AO(object):
             return filter(lambda h: h.osm is None, self._subB)
 
     def CalcAreaStat(self, typ):
+        if typ.endswith('_b'):
+            # no buildings in country
+            if self.guid is None:
+                return 0
+            # all building children are easily available from all_b
+            return len(self.subB(typ))
         # check in pulled children
         if (hasattr(self, '_subO') and
                 (typ in self._subO or
                  (typ == 'all' and 'not found' in self._subO))):
-            self._stat[typ] = len(self.subO(typ))
+            return len(self.subO(typ))
+        if ((self.kind == 0 and typ == 'found') or
+                (self.kind < 2 and typ == 'street')):
+            return 0
         elif typ in ('all', 'found', 'street'):
-            if (('all' in self._stat and self._stat['all'] == 0) or
-                    (self.kind == 0 and typ == 'found') or
-                    (self.kind < 2 and typ == 'street')):
-                self._stat[typ] = 0
-            else:
                 # make request
                 q = self.session.query(Addrobj).filter_by(parentid=self.f_id,
                                                           livestatus=True)
@@ -449,26 +470,18 @@ class fias_AO(object):
                 elif typ == 'street':
                     q = q.join(StreetAssoc).distinct(Addrobj.id)
                 # otherwise - all
-                self._stat[typ] = q.count()
+                return q.count()
+        raise AssertionError('Wrong stat type' + typ)
 
-        elif typ.endswith('_b'):
-            # no buildings in country
-            if self.guid is None:
-                self._stat[typ] = 0
-                return
-            # all building children are easily available from all_b
-            self._stat[typ] = len(self.subB(typ))
-
-    def CalcRecStat(self, typ, savemode=1):
+    def CalcRecStat(self, typ):
         res = 0
         for ao in self.subO('not found'):
-            res += fias_AONode(ao).stat(typ, savemode)
+            res += fias_AONode(ao).stat(typ)
         for ao in self.subO('found'):
-            res += fias_AONode(ao).stat(typ, savemode)
+            res += fias_AONode(ao).stat(typ)
         for ao in self.subO('street'):
             res += ao.stat(typ[:-2])
-        self._stat[typ] = res + self.stat(typ[:-2])
-        return self._stat[typ]
+        return res + self.stat(typ[:-2])
 
     @property
     def stat_db_full(self):
@@ -483,34 +496,29 @@ class fias_AO(object):
             return False
         return True
 
-    def pullstatA(self):
-        '''Pull stat info from statistic obj'''
-        def getvalue(item):
-            value = getattr(stat, item)
-            if value is not None:
-                self._stat[item] = value
-
-        stat = self.fias.stat
-        if stat is None:
-            return {}
-        for r in ('', '_r'):
-            getvalue('all' + r)
-            if self._stat.get('all', 0):
-                getvalue('found' + r)
-                getvalue('street' + r)
-            getvalue('all_b' + r)
-            if self._stat.get('all_b', 0):
-                getvalue('found_b' + r)
-        return self._stat
-
     def stat(self, typ, savemode=0):
         '''Statistic of childs for item'''
         if not config.use_osm:
             return 0
-        # Calculable values
+        # Fetch data
+        stat = self.fias.stat
+        if stat is None:
+            stat = Statistic({})
+            if self.guid is not None:
+                stat.ao_id = self.fias.id
+                self.session.add(stat)
+                self.session.commit()
+            self.fias.stat = stat
         (r, t0) = ('_r', typ[:-2]) if typ.endswith('_r') else ('', typ)
         (b, t0) = ('_b', t0[:-2]) if t0.endswith('_b') else ('', t0)
-        if t0 != 'all' and self.stat('all' + b + r, savemode) == 0:
+        # Calculable values
+        if t0 == 'not found':
+            if r and getattr(stat, 'all' + b + r, None) is None:
+                # When no statistic - calculate whole tree
+                return self.CalcRecStat(typ + b)
+            return self.stat('all' + b + r) -\
+                (self.stat('found_b' + r) if b else self.stat('all_found' + r))
+        if t0 != 'all' and self.stat('all' + b + r) == 0:
             return 0
         if t0 == 'all_found':
             return self.stat('found' + r) + self.stat('street' + r)
@@ -518,33 +526,24 @@ class fias_AO(object):
             return 0.9 * self.stat('all' + b + r)
         if t0 == 'all_low':
             return 0.2 * self.stat('all' + b + r)
-        if t0 == 'not found':
-            # Try to pull saved stat
-            if not (('all' + b + r) in self._stat) and self.guid is not None:
-                self.pullstatA()
 
-            if r and ('all' + b + r not in self._stat):
-                self.CalcRecStat(typ, savemode)
-            return self.stat('all' + b + r) -\
-                (self.stat('found_b' + r) if b else self.stat('all_found' + r))
         # There are no streets or buildings in root
         if self.guid is None and (typ == 'street' or typ.endswith('_b')):
             return 0
-        # Try to pull saved stat
-        if not (typ in self._stat) and self.guid is not None:
-            self.pullstatA()
+            # Try to pull saved stat
+        val = getattr(stat, typ, None)
         # If still no stat - calculate
-        if typ not in self._stat:
+        if val is None:
             if r:
-                self.CalcRecStat(typ, savemode)
+                val = self.CalcRecStat(typ)
             else:
-                self.CalcAreaStat(typ)
-            self.SaveAreaStat(savemode)
-        if typ not in self._stat:
+                val = self.CalcAreaStat(typ)
+            setattr(stat, typ, val)
+        if val is None:
             logging.error("Not calculated stat " + typ)
-            logging.error(self._stat.items())
+            logging.error(stat)
             logging.error(self.guid)
-        return self._stat[typ]
+        return val
 
     def SaveAreaStat(self, mode=0):
         '''Save statistic to DB
@@ -563,10 +562,10 @@ class fias_AO(object):
         statR = self.fias.stat
         if statR is None:
             # multithread workaround
-            statR = self.session.query(Statistic).get(self.f_id)
+            statR = self.session.query(Statistic).get(self.fias.id)
         if statR is None:
             if a or b or ar or br:
-                statR = Statistic({"ao_id": self.f_id})
+                statR = Statistic({"ao_id": self.fias.id})
                 self.session.add(statR)
                 self.fias.stat = statR
             else:
