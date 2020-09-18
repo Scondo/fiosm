@@ -82,7 +82,7 @@ class Socrbase(FiasRow, Base):
     level = Column(SmallInteger, primary_key=True)
     scname = Column(String(10), primary_key=True, default="")
     socrname = Column(String(50))
-    kod_t_st = Column(String(4))
+    kod_t_st = Column(String(4), primary_key=True)
 
 
 class Normdoc(FiasRow, Base):
@@ -90,9 +90,9 @@ class Normdoc(FiasRow, Base):
     normdocid = Column(GUID, primary_key=True)
     docname = Column(String)
     docdate = Column(Date)
-    docnum = Column(String(20))
+    docnum = Column(String) # was 20, seem to be longer
     doctype = Column(Integer)
-    docimgid = Column(Integer)
+    docimgid = Column(String) # was Integer, seems to be GUID
 
 
 class Addrobj(FiasRow, Base):
@@ -162,8 +162,8 @@ class House(FiasRow, Base):
 
     housenum = Column(String(20))
     eststatus = Column(SmallInteger)
-    buildnum = Column(String(10))
-    strucnum = Column(String(10))
+    buildnum = Column(String(20))
+    strucnum = Column(String(20))
     strstatus = Column(SmallInteger)
     ao_id = Column(Integer, index=False)
     statstatus = Column(SmallInteger)

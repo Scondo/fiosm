@@ -18,6 +18,8 @@ except ImportError:
 from os.path import exists
 from os import remove
 import rarfile
+import zipfile
+from fnmatch import fnmatch
 import fias_db
 from fias_db import House, Addrobj, Normdoc
 from uuid import UUID
@@ -168,7 +170,7 @@ class FiasFiles(object):
                                             int(dumpdate[0]))
                         self.fias_list[ver.ver] = it
                     session.commit()
-            except URLError as e:
+            except (URLError, AttributeError) as e:
                 logging.warn(e)
                 pass
         return cls.instance
@@ -192,9 +194,13 @@ class FiasFiles(object):
             self.full_ver = ver
             pbar.finish()
             try:
-                arch = rarfile.RarFile(self.full_file)
                 logging.info('Testing full file...')
-                arch.testrar()
+                if self.full_file.endswith("rar"):
+                    arch = rarfile.RarFile(self.full_file)
+                    arch.testrar()
+                if self.full_file.endswith("zip"):
+                    arch = rarfile.ZipFile(self.full_file)
+                    arch.testzip()
             except rarfile.Error:
                 # Try get previous version
                 logging.warn('Full file version ' + str(ver) + ' is broken')
@@ -202,10 +208,16 @@ class FiasFiles(object):
                 logging.warn('Trying full file version ' + str(ver - 1))
                 self.get_fullarch(ver - 1)
 
+
     def get_fullfile(self, table):
         logging.warn("Wanna full " + table)
         self.get_fullarch()
-        arch = rarfile.RarFile(self.full_file)
+        if self.full_file.endswith('rar'):
+            arch = rarfile.RarFile(self.full_file)
+        elif self.full_file.endswith('zip'):
+            arch = zipfile.ZipFile(self.full_file)
+        else:
+            raise AssertionError('Unknown arch type')
         for filename in arch.namelist():
             if filename[3:].lower().startswith(table + '_'):
                 fdate = strpdate(filename.split("_")[2], "%Y%m%d")
@@ -224,7 +236,10 @@ class FiasFiles(object):
                     except:
                         pass
                 if syncrar:
-                    return (arch.open(filename), self.full_ver)
+                    res = arch.open(filename)
+                    if self.full_file.endswith('zip'):
+                        res._inf = arch.getinfo(filename)
+                    return (res, self.full_ver)
                 else:
                     filo = AsyncRarCli(self.full_file, filename)
                     return (filo, self.full_ver)
@@ -371,6 +386,7 @@ class GuidId(object):
             print(sorted(dic.items()))
             print(sorted(idO.asdic().items()))
             raise
+        return idO
 
 
 AoGuidId = GuidId('aoguid', fias_db.Addrobj, True)
@@ -429,41 +445,70 @@ def normdoc_dic(attrib):
     if docdate:
         rec['docdate'] = date(*[int(it) for it in docdate.split('-')])
     else:
-        rec['docdate'] = None
+        rec['docdate'] = date(1800,1,1)
     for key in ('docname', 'docnum', 'doctype', 'docimgid'):
         rec.setdefault(key, None)
     return rec
 
 
-def normdoc_row(name, attrib):
+def normdoc_row(attrib):
     global now_row, now_row_, bulk
-    if name == "NormativeDocument":
+    if attrib is not None:
         now_row_ += 1
         # rec = Normdoc(rec)
-        bulk.append(normdoc_dic(attrib))
-    if now_row_ == 10000 or name is None:
+        bulk.append(attrib)
+    if now_row_ == 10000 or attrib is None:
         now_row = now_row + now_row_
         now_row_ = 0
-        session.execute(Normdoc.__table__.insert().values(bulk))
+#        try:
+        if bulk:
+            session.execute(Normdoc.__table__.insert().values(bulk))
+#        except:
+#            for it in bulk:
+#                session.execute(Normdoc.__table__.insert(it))
+#        except:
+#            print it
+#            raise
         bulk = []
 
 
 def normdoc_row_upd(name, attrib):
     if name == "NormativeDocument":
         pbar.update(now_row + now_row_)
-        old_doc = session.query(Normdoc).get(attrib['NORMDOCID'])
+        attrib = normdoc_dic(attrib)
+        old_doc = session.query(Normdoc).get(attrib['normdocid'])
         if old_doc:
-            old_doc.fromdic(normdoc_dic(attrib))
+            if old_doc.docdate < attrib['docdate']:
+                old_doc.fromdic(attrib)
+            # else ignore
         else:
-            normdoc_row(name, attrib)
+            normdoc_row(attrib)
     elif name is None:
-        normdoc_row(name, attrib)
+        normdoc_row(None)
 
+nd_done = set()
+def normdoc_row_new(name, attrib):
+    global nd_done
+    if name == "NormativeDocument":
+        a = long(attrib.get('NORMDOCID', '0').replace('-', ''), 16)
+        if a in nd_done:
+            normdoc_row(None)
+            #print a
+            normdoc_row_upd(name, attrib)
+        elif a == 0:
+            return
+        else:
+            normdoc_row(normdoc_dic(attrib))
+        nd_done.add(a)
+    elif name is None:
+        normdoc_row(None)
 
 def socr_obj_row(name, attrib):
     if name == "AddressObjectType":
         socr = fias_db.Socrbase(attrib)
         session.add(socr)
+        #logging.warn(socr.asdic())
+        #session.commit()
 
 
 def addr_obj_row(name, attrib):
@@ -494,6 +539,12 @@ def addr_obj_row(name, attrib):
         attrib['aoguid'] = UUID(int=long(attrib.pop('AOGUID').
                                         replace('-', ''), 16))
         attrib['parentid'] = AoGuidId.getid(attrib.pop('PARENTGUID', None))
+        if 'CURRSTATUS' in attrib and not attrib['CURRSTATUS']:
+            del attrib['CURRSTATUS']
+        #if attrib.pop('DIVTYPE', 0):
+        #    attrib['DIVTYPE'] = 1
+        #else:
+        #    attrib['DIVTYPE'] = 0
 
         AoGuidId.pushrec(attrib, comp=addr_cmp)
 
@@ -597,13 +648,20 @@ def UpdateTable(table, fil, engine=None):
                                        maxval=file_size + 1).start()
 
         class PBReader(object):
-            def __init__(self, orig):
+            def __init__(self, orig, maxval=None):
                 self.orig = orig
+                self.pos = 0
+                self.maxval = maxval
 
             def read(self, n):
-                pbar.update(self.orig.tell())
-                return self.orig.read(n)
-        fil = PBReader(fil)
+                t = self.orig.read(n)
+                self.pos += len(t)
+                if self.maxval:
+                    pbar.update(min(self.pos, self.maxval))
+                else:
+                    pbar.update(self.pos)
+                return t
+        fil = PBReader(fil, file_size + 1)
     if table == 'addrobj':
         if not upd:
             Addrobj.__table__.drop(engine)
@@ -616,7 +674,7 @@ def UpdateTable(table, fil, engine=None):
         if not upd:
             Normdoc.__table__.drop(engine)
             Normdoc.__table__.create(engine)
-            p.StartElementHandler = normdoc_row
+            p.StartElementHandler = normdoc_row_new
         else:
             p.StartElementHandler = normdoc_row_upd
     elif table == 'house':
@@ -641,7 +699,7 @@ def UpdateTable(table, fil, engine=None):
         elif table == 'addrobj':
             engine.execute("CLUSTER fias_addr_obj "
                            "USING ix_fias_addr_obj_parentid")
-
+    nd_done = set()
     logging.info(table + " imported")
 
 

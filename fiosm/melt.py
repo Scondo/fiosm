@@ -515,7 +515,7 @@ class fias_AO(object):
         if t0 == 'not found':
             if r and getattr(stat, 'all' + b + r, None) is None:
                 # When no statistic - calculate whole tree
-                return self.CalcRecStat(typ + b)
+                return self.CalcRecStat(typ)
             return self.stat('all' + b + r) -\
                 (self.stat('found_b' + r) if b else self.stat('all_found' + r))
         if t0 != 'all' and self.stat('all' + b + r) == 0:
